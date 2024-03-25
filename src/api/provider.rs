@@ -100,6 +100,11 @@ pub extern "C" fn vouch(
 /// let process = provider::process(&randomness, &redemption, &mut info);
 /// assert!(!process.is_null())
 /// ```
+///
+/// # Risks
+///
+/// - The output `info` leaks implementation details. It could be better to
+///   output a fixed-size digest for use with a pre-hashed signing function.
 #[no_mangle]
 #[export_name = "scal3_provider_process"]
 pub extern "C" fn process(
@@ -259,6 +264,14 @@ pub extern "C" fn challenge(
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Risks
+///
+/// - A person in the middle could change the subscriber’s signature share
+///   before forwarding to the provider, potentially exhausting an attempt
+///   rate limiting counter, and thereby causing a denial of service. This
+///   could be mitigated by additionally verifying a checksum of input data
+///   under the device signature.
 #[export_name = "scal3_provider_prove"]
 pub extern "C" fn prove(
     randomness: &Randomness,

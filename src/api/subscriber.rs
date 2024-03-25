@@ -153,6 +153,11 @@ pub type Data = [u8; DATA_TO_SIGN_DOMAIN.len() + 32];
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Risks
+///
+/// - The output `data` leaks implementation details. It could be better to
+///   output a fixed-size digest for use with a pre-hashed signing function.
 #[no_mangle]
 #[export_name = "scal3_subscriber_authenticate"]
 pub extern "C" fn authenticate(
