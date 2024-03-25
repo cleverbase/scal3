@@ -34,13 +34,14 @@ pub type Mask = [u8; 32];
 
 /// Entitlement to enroll.
 ///
-/// Contains provider commitments `([a10]G, [a11]G)` and a proof of knowledge
-/// of `a10`.
+/// Contains provider commitments ([<i>a</i><sub>10</sub>]<i>G</i>,
+/// [<i>a</i><sub>11</sub>]<i>G</i>) and a Schnorr zero-knowledge proof of
+/// knowledge of <i>a</i><sub>10</sub>.
 pub type Voucher = [u8; 131];
 
 /// Attempt to redeem a [Voucher] to enroll.
 ///
-/// Contains subscriber commitments `([a20]G, [a21]G)`, a proof of knowledge
+/// Contains subscriber commitments () `([a20]G, [a21]G)`, a proof of knowledge
 /// of `a20`, and a secret share `a20 + a21 * 1` for the provider.
 pub type Redemption = [u8; 163];
 
@@ -147,6 +148,12 @@ pub unsafe extern "C" fn pay(
 }
 
 /// Releases a [Payload] from memory.
+///
+/// # Risk
+///
+/// - It is easy for users to forget releasing allocated memory. Possibly this
+///   does not require a separate function anyway, since the functions consuming
+///   a payload would release it anyway.
 #[no_mangle]
 #[export_name = "scal3_release"]
 pub unsafe extern "C" fn release(

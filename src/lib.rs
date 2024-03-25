@@ -30,6 +30,21 @@
 //! ## Auditing
 //!
 //! The [subscriber] or any other party with access can [verify] the [Evidence].
+//!
+//! # Risks
+//!
+//! - Not all hash functions are checked for proper domain separation. This risk
+//!   could be limited by centralizing all hash function definitions for easier
+//!   review.
+//! - This library does not apply its dependencies everywhere in an idiomatic
+//!   way. For example, where dependency constructors are not exposed, the
+//!   implementation now relies on serialization/deserialization. Also,
+//!   sometimes too low-level types are used, such as `Scalar` instead of
+//!   `SecretKey` and `ProjectivePoint` instead of `PublicKey`, which
+//!   potentially means missing out on some security features.
+//! - The implementation may still be vulnerability to side channel attacks,
+//!   such as timing attacks and reading memory that was not zeroized in time.
+//!   The security dependencies offer functions to implement this properly.
 
 mod api;
 mod group;
