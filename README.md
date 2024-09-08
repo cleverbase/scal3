@@ -18,23 +18,23 @@ Adoption of mobile wallets is accelerating with the “eIDAS 2.0” [European Di
 4. The provider keeps a tamper-evident log with evidence of instructions.
 5. Upon request, the provider proves that a particular operation was authorized.
 
-```mermaid
-flowchart LR
-subgraph Provider
-	direction TB
-	system(Central system)
-	log[(Tamper-evident log)]
-	system -- 3. execution --> system
-	system -- 4. evidence --> log
-end
-subgraph Subscriber
-	direction TB
-	user((User))
-	device[<br>Device<br><br>]
-	user -- 1. control --> device
-end
-Subscriber -- 2. instruction --> Provider
-Provider -- 5. proof --> Subscriber
+```
+┌────────────┐               ┌─────────────────────┐
+│Subscriber  │               │Provider             │
+│            │               │                     │
+│┌──────┐    │               │┌───────┐            │
+││ User │    │               ││Central├──┐3.       │
+│└┬─────┘    │               ││system │◄─┘execution│
+│ │1. control│2. instruction │└┬──────┘            │
+│ ▼          ├──────────────►│ ▼4. evidence        │
+│┌──────┐    │               │┌───────┐            │
+││      │    │               │┌───────┐            │
+││      │    │               ││       │            │
+││Device│    │               ││Tamper-│            │
+││      │    │               ││evident│            │
+││      │    │               ││log    │            │
+│└──────┘    │◄──────────────┤└───────┘            │
+└────────────┘       5. proof└─────────────────────┘
 ```
 
 ## Verify transparent systems
