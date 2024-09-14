@@ -49,7 +49,7 @@ This empowers users with cryptographic proof.
 
 ## Three ways to achieve SCAL3
 
-1. Using the [SCAL3 with UAF](docs/schemes/uaf.md) scheme. This involves using a dedicated multi-factor cryptographic device, such as a FIDO security key supporting UAF.
+1. Using the [SCAL3 with CTAP2](docs/schemes/ctap2.md) scheme. This involves using a dedicated multi-factor cryptographic device, such as a FIDO security key supporting CTAP2 with PIN protection.
 2. Using the [SECDSA](https://eprint.iacr.org/2021/910) [technology](https://www.cs.ru.nl/E.Verheul/presentations/SECDSA%20Assissted%20Wallet%200.31.pdf). This technology is based on algorithms that were invented in 2021 and patented by Eric Verheul. Users verify evidence by applying homomorphic encryption.
 3. Using the [SCAL3 with Thresholds](docs/schemes/thresholds.md) scheme. With this patent pending solution, users verify evidence using open standard ECDSA and ECSDSA signature verification.
 
