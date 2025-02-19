@@ -1,0 +1,307 @@
+\documentclass[a4paper]{article}
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[style=numeric]{biblatex}
+\usepackage[hidelinks]{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[stable,symbol]{footmisc}
+\usepackage[operators]{cryptocode}
+
+\addbibresource{thresholds.bib}
+
+\newtheorem*{proposition}{Proposition}
+
+\createpseudocodeblock{protocol}{center,boxed}{}{}{}
+\createprocedureblock{procb}{center,boxed}{}{}{}
+
+\author{Sander Q. Dijkhuis\\Cleverbase ID B.V.\\sander.dijkhuis@cleverbase.com}
+\title{Authentication and sole control\\at a high level of assurance\\on widespread smartphones\\with threshold signatures}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+How to be assured that a user entered their PIN on their smartphone? The question is especially relevant when deploying remotely secured services such as with mobile wallets for digital identity and banking, which typically deploy a server side backed by a hardware security module (HSM). As long as the server can be trusted, authentication can be performed with high assurance, but it is challenging to guarantee sole control. This report defines an approach in terms of an abstract security problem and a concrete solution based on threshold signatures. It can be applied to use cases such as HSM-backed mobile identity wallets and other identification means.
+\end{abstract}
+
+\section{Introduction}
+
+Increasingly, social and economic interactions occur online, increasing the potential impact of cybersecurity threats including threats to privacy. This requires enhanced protection of data against unauthorised access and disinformation. Recent public and private policies therefore require a high assurance level with regard to the user authentication and control, and take measures to enable high adoption of secure cryptographic devices among the potential user base.
+
+For example, the European Digital Identity Regulation \cite{EU2024-1183} requires Member States to provide all natural and legal persons access to authentic identity attributes. To ensure large-scale adoption, the regulator aims to leverage the widespread ownership of smartphones. On these, users install an app providing a European Digital Identity Wallet, which provides authentication at a high assurance level according to common baseline specifications \cite{EU2015-1502}, as well as sole control over privileged operations.
+
+A challenge to this adoption is that many common smartphones do not yet contain sufficiently secure hardware to meet such requirements, and even when they do, the license to use this hardware may be unavailable. To accelerate adoption, the app may therefore rely on security functions provided via a secure channel by remote hardware, such as a centrally managed hardware security module (HSM). Such an approach is for example foreseen in the Dutch ministerial order on identification means \cite{Regeling}, and is common in online banking to meet Strong Customer Authentication requirements \cite{PSD2}. A well-known approach to solve the authentication problem is based on public key cryptography: the HSM protects the user’s private key within its tamper-protected environment, and only activates the private key upon verification of the secure channel and rate-limited entry of the user’s PIN. A verifier authenticates the user with signatures created this way against the user’s enrolled public key.
+
+However, the remotely secured approach can pose new threats to sole control: the user is not able to monitor the remote server and HSM and detect malicious modifications to its software. For example, the remote service provider may maliciously or unknowingly install a backdoor to enable activation of the user’s private key without requiring entry of the user’s PIN, taking over access to their protected data. In the example context of government-regulated identity wallets, such backdoors may be abused for law enforcement or identity fraud, in both cases disrupting the policy objectives.
+
+This technical report presents an approach to achieve both high assurance level authentication and sole control using common smartphones backed by remote servers. Key security features are multi-factor authentication, context binding, non-repudiation and transparency: each authentication process results in publicly verifiable evidence that the smartphone was used with the user’s PIN. The evidence is non-repudiable and potentially bound to application context for sole control, such as an instruction or an authorization scope.
+
+The first section models the cryptographic capabilities of common smartphones and servers which could provide assurance. The second section defines the approach in abstract terms of a security problem, enabling multiple solutions. The third section presents a solution to this security problem applying threshold signatures. The fourth section presents example applications of solutions.
+
+\section{Related work}
+
+A well-known building block for authentication systems is a threshold signature scheme, such as Flexible Round-Optimized Schnorr Threshold Signatures (FROST) \cite{cryptoeprint:2020/852}. However, this is not sufficient for widespread smartphones, since their hardware does not natively support threshold signing.
+
+A first system design meeting similar goals as in this report is based on split key ECDSA signatures \cite{Verheul2024}. However, this approach requires verifiers to implement low-level group operations to verify homomorphically encrypted verification data. Without the homomorphic encryption, an adversary with access to the smartphone could use the credentials to verify guesses at the user’s PIN.
+
+To open up the design space for alternative optimisations, this report contributes an analysis of the security problem and proposes an alternative solution that optimises for simplicy on the verifier side.
+
+\section{Prerequisites}
+
+Common smartphones provide two relevant execution environments: the programmable application environment, and the static secure area. Examples of the secure area are on Android-based phones the Trusted Execution Environment (TEE) and StrongBox, and on iPhone models the Secure Enclave. Applications can request services from the secure area using common interfaces. Both environments can perform cryptography, but only the secure area is trusted to provide non-extractable private or secret keys.
+
+In the context of HSMs, a distinction is made between several execution environments as well. For simplicity, this report also assumes a static secure area and a programmable application environment for the local or external client application.
+
+Regulation typically limits what capabilities can be evaluated for cybersecurity. For example, EU Member States rely on SOG-IS agreed cryptographic mechanisms \cite{SOGIS-ACM} for cross-border assurance.
+
+This section models the relevant cryptographic capabilities with assurance.
+
+\paragraph{Cryptographic hash}
+
+Application environments can implement cryptographic hash functions using appropriate libraries, providing an algorithm:
+\begin{itemize}
+\item $\#(\mathsf{msg})$: outputs a pseudo-random byte string of fixed size.
+\end{itemize}
+In the context of smartphones, the most common hash algorithm is SHA-256 \cite{FIPS180-4}.
+
+\paragraph{Message authentication}
+
+Some secure areas implement a keyed-hash message authentication code (HMAC) \cite{FIPS198-1}, which includes the algorithms:
+\begin{itemize}
+\item $\mathsf{SecretGen}()$: outputs a randomized HMAC secret key $k$.
+\item $\mathsf{MAC}(k,\textsf{msg})$: deterministically outputs a fixed-size MAC using secret key $k$ on message $\mathsf{msg}$.
+\end{itemize}
+
+\paragraph{Prime-order group}
+
+All common secure areas at least a common group $\mathbb G$ of prime order $q$ with base point $G\in\mathbb{G}$, such as the P-256 elliptic curve \cite{SEC2}. This report uses additive notation and denotes the scalar field as $\mathbb F^*_q$. Implementations include at least the following algorithms:
+\begin{itemize}
+\item $\mathsf{KeyGen}()$: outputs a randomized key pair $(d, [d]G)\in(\mathbb F^*_q,\mathbb G)$.
+\end{itemize}
+Application environments can additionally support additional group and scalar operations using a cryptographic library. These include the following algorithms \cite{rfc9380}:
+\begin{itemize}
+\item $\#_\mathsf{C}(\mathsf{msg})$: outputs a cryptographic hash in $\mathbb{G}$ of byte string $\mathsf{msg}$.
+\item $\#_{\mathsf{F}}(\mathsf{msg})$: outputs a cryptographic hash in $\mathbb{F}^*_q$ of byte string $\mathsf{msg}$.
+\end{itemize}
+
+\paragraph{Key agreement}
+
+The Secure Enclave and some Android secure areas provide an implementation of Elliptic Curve Key Agreement with the Diffie-Hellman protocol (ECKA-DH) \cite{TR-03111} on $\mathbb G$. This includes the following algorithm:
+\begin{itemize}
+\item $\mathsf{DH}(d,P)$: outputs the byte string representation of the $x$ coordinate of $[d]P$ for scalar $d\in\mathbb F^*_q$ and element $P\in\mathbb G$. The representation is big-endian and fixed-size.
+\end{itemize}
+
+\paragraph{Digital signatures}
+
+All secure areas implement a digital signature algorithm on $\mathbb{G}$, which can be publicly verified using the following algorithms:
+\begin{itemize}
+\item $\mathsf{Verify}(D,\mathsf{msg},\mathsf{sig})$: outputs $1$ if $\mathsf{sig}$ is a signature over $\mathsf{msg}$ for public key $D$, $0$ otherwise.
+\end{itemize}
+The secure area includes, at least for the Elliptic Curve Digital Signature Algorithm (ECDSA) \cite{TR-03111} on P-256 with SHA-256 hashing:
+\begin{itemize}
+\item $\mathsf{Sign}(d,\mathsf{msg})$: outputs a signature $\mathsf{sig}$ such that $\mathsf{Verify}([d]G,\mathsf{msg},\mathsf{sig})$ returns $1$.
+\end{itemize}
+In ECDSA, a signature is modeled as $\mathsf{sig}=(r,s)\in\mathbb{F}^*_q\times\mathbb{F}^*_q$. Application environments can additionally support Schnorr signatures using a cryptographic library. One variant is the Elliptic Curve-based Schnorr Digital Signature Algorithm (ECSDSA) \cite{TR-03111} over P-256 with SHA-256, which models signatures as $\mathsf{sig}=(c,s)$ where $c$ is a fixed-size byte string and $s\in\mathbb{F}^*_q$. Another variant is the Edwards-Curve Digital Signature Algorithm (EdDSA) \cite{rfc8032} which models signatures as $\mathsf{sig}=(R,s)\in\mathbb{G}\times\mathbb{F}^*_q$.
+
+\section{Security problem}
+
+A remotely protected smartphone authenticator for high-assurance authentication and sole control is modelled as two components with rate-limited communication:
+\begin{itemize}
+\item client: a smartphone app with user interaction and limited access to the smartphone secure area;
+\item server: a rate-limited server application.
+\end{itemize}
+
+Relying on the available cryptographic prerequisites, the problem is to protect the following primary assets:
+\begin{itemize}
+\item identification data: data that identifies the user, consisting of:
+	\begin{itemize}
+	\item possession factor: smartphone private key $d_\mathsf p\in\mathbb{F}^*_q$ in a digital signature algorithm
+	\item knowledge or inherence factor: high-entropy activation data modelled as private key $d_\mathsf a\in\mathbb{F}^*_q$
+	\end{itemize}
+\item context data: byte string $\mathsf{ctx}$ representing an application context, for example including a login challenge or an access scope to authorize
+\end{itemize}
+
+The primary objective is to enable any third-party verifier to verify the identification data in a way that is cryptographically bound to the context data, relying on secondary assets:
+\begin{itemize}
+\item verification data: to be designed data that enables verification of the identification data, consisting of:
+	\begin{itemize}
+	\item credential: a static tuple $\mathsf{cred}$ consisting of one or more public keys, to be designed;
+	\item transcript: a dynamically system-generated tuple $\mathsf{tr}$ proving the possession and second factor, bound to the context data, to be designed;
+	\end{itemize}
+\item protection data: high-entropy user-specific private key $d_\textsf{s}\in\mathbb{F}^*_q$ held at the server, for example derived using $d_\mathsf S\leftarrow\#_\mathsf F(\mathsf{HMAC}(k,D_\mathsf{P}))$ using an HSM-protected secret key $k$;
+\item protocol data: to be designed data exchanged between client and server.
+\end{itemize}
+
+Only the user interacts directly with the system, physically protecting $d_\mathsf{p}$ and willingly providing $d_\mathsf{a}$ to the smartphone app while being informed about $\mathsf{ctx}$. For example:
+\begin{itemize}
+\item the user enters a PIN from which the app derives
+	\begin{itemize}
+	\item $d_\mathsf{a}\leftarrow\#_\mathsf F(\mathsf{HMAC}(k,\mathsf{PIN}))$ using a secure area secret key $k$; or
+	\item $d_\mathsf{a}\leftarrow\#_\mathsf F(\mathsf{DH}(d,\#_\mathsf C(\mathsf{PIN})))$ using a secure area private key $d$; or
+	\end{itemize}
+\item the smartphone’s secure area evaluates live-recorded biometric data to enable decryption of $d_\mathsf{a}$ from a local key store.
+\end{itemize}
+
+The system aims to protect against these main threats:
+\begin{itemize}
+\item information disclosure, affecting identification data and protection data confidentiality;
+\item transcript forgery, affecting context data, protocol data and verification data integrity.
+\end{itemize}
+
+The model assumes that:
+\begin{itemize}
+\item $d_\mathsf{p}$ is well-protected by the smartphone hardware;
+\item $d_\mathsf{a}$ is well-protected by the user and the rate-limiting mechanism;
+\item $\mathsf{prot}$ is well-protected by the server provider’s security controls, for example relying on a hardware security module (HSM);
+\item $\mathsf{cred}$ is well-protected against forgery and includes the appropriate public keys;
+\item $\mathsf{ctx}$ includes replay attack prevention data if needed, such as a nonce or a timestamp.
+\end{itemize}
+
+The system has the following security objectives. To meet a high authentication assurance level, objectives are derived from the common baseline specifications \cite{EU2015-1502} on the electronic identification means characteristics and design (Annex, Section 2.2.1) and on the authentication mechanism (Annex, Section 2.3.1). To meet a high sole control assurance level (SCAL), objectives are derived from the European Standard \cite{EN419241-1:2018} on trustworthy systems supporting server signing. While the standard defines two levels SCAL1 and SCAL2 based on a substantial authentication assurance level, the set of requirements in this section can be considered a higher level SCAL3 \cite{SCAL3}.
+
+\paragraph{Multi-factor}
+
+The verification transcript is highly likely to be created during a single process during which all identification data were available. That is, given oracles that output $d_\mathsf{p}$ signatures, protocol data and transcripts, an efficient adversary is highly unlikely to forge new protocol data and verification data; and given $d_\mathsf{a}$, protocol data and transcripts, an efficient adversary is highly unlikely to new protocol data or verification data.
+
+\paragraph{Context-bound}
+
+The context data is highly unlikely to be modified after authentication. That is, given an oracle that outputs transcripts, an efficient adversary is highly unlikely to forge new context data that can be verified successfully.
+
+\paragraph{Non-repudiable}
+
+It is highly unlikely that anyone, including the server, has forged verification data without control over all identification data components. That is, given oracles that output protocol data and transcripts, an efficient adversary is highly unlikely to forge new verification data.
+
+\paragraph{Transparent}
+
+The verification data can safely be provided to anyone for verification, not just to the server, without compromising protection against the main threats. That is, given access to a credential and to the smartphone app, an efficient adversary is highly unlikely to guess the PIN.
+
+\section{Applying threshold signatures\footnote{Patent NL2037022 pending.}}
+
+This report presents the following solution to the security problem. It applies FROST \cite{cryptoeprint:2020/852} \cite{rfc9591} as an extension to digital signature algorithm $\Sigma_\mathsf A=(\mathsf{Sign},\mathsf{Verify})$, including the following algorithms:
+\begin{itemize}
+\item $\mathsf{Commit}()$: probabilistically outputs $((d,e),(D,E))$, a pair of nonces $d,e\in\mathbb F^*_q$ and commitment shares $([d]G,[e]G)$.
+\item $\mathsf{AggregateFirst}(\mathsf{msg},P,C)$: deterministically outputs the first part of the group signature on message $\mathsf{msg}$ verifiable with group public key $P\in\mathbb G$ based on commitment list $C$, which is a tuple of tuples $(i,D_i,E_i)$ with participant index $i$ and commitment shares $D_i,E_i\in\mathbb G$.
+\item $\mathsf{SignShare}(\mathsf{msg},s,(d,e),C)$: deterministically outputs $z$, a signature share on message $\mathsf{msg}$ using signing key share $s$, nonces $d,e\in\mathbb F^*_q$ and commitment list $C$, which is a tuple of tuples $(i,D_i,E_i)$ with participant index $i$ and commitment shares $D_i,E_i\in\mathbb G$.
+\item $\mathsf{Aggregate}(\mathsf{msg},C,Z)$: deterministically outputs a “FROSTy” Schnorr signature on message $\mathsf{msg}$ using a commitment list $C$ and a signature share list $Z$, which is a tuple of tuples $(i,z_i)$ with participant index $i$ and signature share $z_i\in\mathbb F^*_q$.
+\end{itemize}
+
+After initial setup, the solution consists of two protocol steps between client and server, after which any verifier can check the authentication. The protocol steps are illustrated in Figure \ref{fig:protocol} and specified along with the setup and check algorithms in Figure \ref{fig:algos}. In this solution, the credential consists of the public keys $\mathsf{cred}=(D_\mathsf P,D_\mathsf A)$ and the transcript of $\mathsf{tr}=(D_\mathsf{B},\mathsf{dgst},\sigma_\mathsf P,\sigma_\mathsf B,\sigma_\mathsf A)$. A prototype is available at \cite{SCAL3}.
+
+\begin{figure}[t]
+\protocol[colspace=-4cm]{
+	\textsf{\textbf{Client}}(\mathsf{pp},\mathsf{id}=(d_\mathsf P,d_\mathsf A),\mathsf{cred}=(D_\mathsf P,D_\mathsf A),\mathsf{ctx})\>\>\>\textsf{\textbf{Server}}(\mathsf{pp},d_\mathsf S,\mathsf{cred})\\[][\hline]\\
+	\>\>\>(c_1,C_1)\sample\mathsf{Challenge}(\mathsf{pp})\\
+	\>\sendmessageleft*[4cm]{C_1=(D_1,E_1)}\\
+	(C_2,\mathsf{att})\sample\mathsf{Pass}(\mathsf{pp},\mathsf{id},\mathsf{cred},C_1,\mathsf{ctx})\\
+	\>\sendmessageright*[4cm]{C_2=(D_2,E_2),\mathsf{att}=(D_\mathsf B,z_2,\sigma_\mathsf P,\sigma_\mathsf B),\mathsf{ctx}}\\
+	\>\>\>r\leftarrow\mathsf{Prove}(\mathsf{pp},d_\mathsf S,\mathsf{cred},(c_1,C_1),C_2,\mathsf{att},\mathsf{ctx})
+}
+\caption{The authentication protocol applying threshold signatures, resulting in activation signature $r=\sigma_\mathsf A$ or rejection $r=\bot$. Each challenge tuple $C_1$ can be used only once, and access to the $\mathsf{Prove}$ endpoint is rate-limited after verification of possession signature $\sigma_\mathsf P$ using $\mathsf{cred}$. Integrity of each attempt $\mathsf{att}$ is protected using binding signature $\sigma_\mathsf B$, to be verified using $D_\mathsf B$.}
+\label{fig:protocol}
+\end{figure}
+
+\begin{figure}[t]
+\begin{pcvstack}[boxed,center,space=1em]
+	\begin{pchstack}[center,space=1em]
+		\procedure[linenumbering]{$\mathsf{Setup}(1^\lambda)$}{
+			\mathsf{pp}\leftarrow(\Sigma_\mathsf{P},\Sigma_\mathsf{B},\Sigma_\mathsf{A},\#) \\
+			\pcreturn \mathsf{pp}
+		}
+		\procedure[linenumbering]{$\mathsf{Check}(\mathsf{pp},(D_\mathsf{P},D_\mathsf{A}),D_\mathsf{B},\mathsf{dgst},\sigma_\mathsf P,\sigma_\mathsf B,\sigma_{\mathsf A},\mathsf{ctx})$}{
+			c_\mathsf P\leftarrow\Sigma_\mathsf P.\mathsf{Verify}(D_\mathsf P,\sigma_{\mathsf A,1}\|\mathsf{dgst},\sigma_\mathsf P) \\
+			c_\mathsf B\leftarrow\Sigma_\mathsf B.\mathsf{Verify}(D_\mathsf B,\sigma_{\mathsf P,1}\|\sigma_{\mathsf P,2},\sigma_\mathsf B) \\
+			c_\mathsf A\leftarrow\Sigma_\mathsf A.\mathsf{Verify}(D_\mathsf A,\mathsf{ctx}\|D_\mathsf B,\sigma_\mathsf A) \\
+			\pcreturn c\leftarrow c_\mathsf P\wedge c_\mathsf B\wedge c_\mathsf A
+		}
+	\end{pchstack}
+	\begin{pchstack}[center,space=0em]
+		\procedure[linenumbering]{$\mathsf{Challenge}(\mathsf{pp})$}{
+			((d_1,e_1),(D_1,E_1))\sample\ \mathsf{Commit}() \\
+			\pcreturn ((d_1,e_1),(D_1,E_1))
+		}
+		\procedure[linenumbering]{$\mathsf{Pass}(\mathsf{pp},(d_\textsf{P},d_\textsf{A}),(D_\textsf{P},D_\textsf{A}),(D_1,E_1),\mathsf{ctx})$}{
+			((d_2,e_2),(D_2,E_2))\sample\mathsf{Commit}() \\
+			(d_\mathsf{B},D_\mathsf{B})\sample\mathsf{KeyGen}() \pcskipln\\
+			C=((1,D_1,E_1),(2,D_2,E_2))\\
+			z_2\leftarrow\mathsf{SignShare}(\mathsf{ctx}\|D_\mathsf B,d_\mathsf A,(d_2,e_2),C) \\
+			\sigma_{\mathsf A,1}\leftarrow\mathsf{AggregateFirst}(\mathsf{msg},D_\mathsf A,C) \\
+			\mathsf{dgst}\leftarrow\#(z_2)\\
+			\sigma_\mathsf P\sample\mathsf{Sign}(d_\mathsf P,\sigma_{\mathsf A,1}\|\mathsf{dgst})\\
+			\sigma_\mathsf B\sample\mathsf{Sign}(d_\mathsf B,\sigma_\mathsf P) \\
+			\pcreturn ((D_2,E_2),(D_\mathsf B,z_2,\sigma_\mathsf P,\sigma_\mathsf B))
+		}
+	\end{pchstack}
+	\begin{pchstack}[center,space=1em]
+		\procedure[linenumbering]{$\mathsf{Prove}(\mathsf{pp},d_\mathsf S,(D_\mathsf{P},D_\mathsf{A}),((d_1,e_1),(D_1,E_1)),(D_2,E_2),(D_\mathsf B,z_2,\sigma_\mathsf P,\sigma_\mathsf B),\mathsf{ctx})$}{ \pcskipln
+			C=((1,D_1,E_1),(2,D_2,E_2)) \\
+			z_1\leftarrow\mathsf{SignShare}(\mathsf{ctx}\|D_\mathsf B,d_\mathsf S,(d_1,e_1),C) \\
+			\sigma_\mathsf A\leftarrow\mathsf{Aggregate}(\mathsf{msg},C,(z_1,z_2)) \\
+			\mathsf{dgst}\leftarrow\#(z_2) \\
+			c\leftarrow\mathsf{Check}(\mathsf{pp},(D_\mathsf{P},D_\mathsf{A}),D_\mathsf{B},\mathsf{dgst},\sigma_\mathsf P,\sigma_\mathsf B,\sigma_\mathsf A,\mathsf{ctx}) \\
+			\pcreturn \textrm{\textbf{if}}\ c=1 \textrm{\textbf{\ then\ }} \sigma_\mathsf A \textrm{\textbf{\ else\ }} \bot
+		}
+	\end{pchstack}
+\end{pcvstack}
+\caption{The algorithms for the patent-pending authentication method applying threshold signatures.}
+\label{fig:algos}
+\end{figure}
+
+The remainder of this section presents arguments demonstrating that the solution meets the objectives.
+
+\begin{proposition}
+The solution meets the Multi-factor objective.
+\end{proposition}
+
+\begin{proof}
+Consider the scenarios of individual authentication factor compromise.
+
+If only $d_\mathsf P$ access is compromised, the adversary is highly unlikely to forge transcripts since these would require either a new FROSTy signature $\sigma_\mathsf A^*$ over fresh $D_\mathsf B^*$, or knowledge of the discrete logarithm of a previous $D_\mathsf B$, both of which are highly unlikely.
+
+If only $d_\mathsf A$ access is compromised, the adversary is also highly unlikely to forge transcripts since these would involve fresh server nonces and commitments, so $\sigma_{\mathsf A,1}$ would be different, and the adversary is highly unlikely to forge the proof of possession $\sigma_\mathsf P^*$ over this data.
+
+If access to both $d_\mathsf A$ and $d_\mathsf S$ is compromised, the adversary could only efficiently succeed by replaying a previous $\sigma_\mathsf P$, and is thereby bound to $\sigma_{\mathsf A,1}$. But this first component of the FROSTy signature is computed using the cryptographic hash of the $\mathsf{ctx}\|D_\mathsf B$, and it is highly unlikely the adversary finds a second preimage of this hash. So the adversary could only use $d_\mathsf A$ and $d_\mathsf S$ to arrive at the same signature $\sigma_\mathsf A$, and not a successful forgery.
+\end{proof}
+
+\begin{proposition}
+The solution meets the Context-bound objective.
+\end{proposition}
+
+\begin{proof}
+Integrity of the context data $\mathsf{ctx}$ is protected by $\sigma_\mathsf A$ and subsequently by $\sigma_\mathsf P$.
+\end{proof}
+
+\begin{proposition}
+The solution meets the Non-repudiable objective.
+\end{proposition}
+
+\begin{proof}
+By security of FROSTy signatures, even an efficient adversary with access to $d_\mathsf S$ could not forge $\sigma_\mathsf A^*$. Therefore the adversary is bound to $D_\mathsf B$, of which it is infeasible to find the discrete logarithm, and therefore the adversary is bound to $\sigma_\mathsf B$ and therefore $\sigma_\mathsf P$.
+\end{proof}
+
+\begin{proposition}
+The solution meets the Transparent objective.
+\end{proposition}
+
+\begin{proof}
+Even with access to $D_\mathsf A$ and the method to derive a candidate $d_\mathsf A'$, for example using the smartphone’s message authentication or key agreement key, an adversary would need information about $d_\mathsf S$ to verify if they have found the discrete logarithm $d_\mathsf A+d_\mathsf S$ of $D_\mathsf A$. But the server only returns zero-knowledge proofs, so it is unlikely that a single guess provides sufficient information to inform a second guess. In practice, the rate-limiting also limits the amount of PIN attempts, therefore minimising the risk.
+\end{proof}
+
+\section{Example applications}
+
+The remotely protected smartphone authenticator can be applied in systems where the verifier is the server, and performs privileged operations upon authorization. Examples are a qualified signature creation device \cite{EN419241-1:2018} or a wallet secure cryptographic application, both of which protect the user’s private keys.
+
+An alternative application is distributed: the verification data is verified as evidence by a third device. For example, the authentication server may be part of a high-assurance authorization server such as in OAuth \cite{rfc6749}, recording the evidence for auditing. Either the associated resource servers could perform such auditing automatically, or it can be performed in a separate process by a separate entity.
+
+In another application, the verification data is recorded in transparency logs, such as in Certificate Transparency \cite{rfc9162}. This enables users to monitor whether all verification data are recorded, and claim damage when finding evidence of a privileged operation without finding recorded verification data that authorizes that operation. Instead of a public record, the log may be protected or only be shared in the case of actual disputes. This principle is further elaborated in \cite{Verheul2024}.
+
+\section{Conclusion}
+
+This report proposes a formalisation of the security problem involved with applying widespread smartphones for assurance level high authentication and sole control. It demonstrates that this problem can be solved at least by applying threshold signatures. This contributes a solution that optimises for simplicy on the verifier side.
+
+\printbibliography
+
+\end{document}

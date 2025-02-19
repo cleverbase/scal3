@@ -8,7 +8,7 @@ This document introduces the SCAL3 with Thresholds scheme, a scheme to meet the 
 > [!NOTE]
 > Patent NL2037022 pending. For inquiries, [contact Cleverbase](mailto:sander.dijkhuis@cleverbase.com).
 
-For a prototype with more in-depth documentation, see the [scal3 crate docs](https://docs.rs/scal3/latest/scal3/).
+For a prototype with more in-depth documentation, see the [scal3 crate docs](https://docs.rs/scal3/latest/scal3/). For a technical report, see [Authentication and sole control at a high level of assurance on widespread smartphones with threshold signatures](../report/README.md).
 
 ## How it works
 

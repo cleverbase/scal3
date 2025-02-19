@@ -1,3 +1,14 @@
 .DS_Store
 target
 Cargo.lock
+
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.run.xml
