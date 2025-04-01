@@ -1,93 +1,75 @@
-use crate::{api, Challenge, domain, Mask, Randomness, Redemption, Validation, Voucher};
-use crate::domain::{Provider, Subscriber, Validating};
-use crate::group::Element;
+use crate::api::*;
+use crate::domain;
+use crate::domain::{pk_recipient_from_bytes, shared_secret_from_bytes, Provider, Result, VerificationError};
+use hpke::Serializable;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
+use std::io::Write;
 
-pub(crate) fn vouch(
-    randomness: &Randomness,
-) -> Voucher {
-    let (_, payload) = Provider { randomness: *randomness }.vouch();
-    postcard::to_allocvec(&payload)
-        .expect("serialization should not fail")
-        .try_into()
-        .expect("known size")
+pub(crate) fn accept(
+    provider: &Key,
+    verifier_secret: &Secret,
+    verifier: &Verifier,
+) -> Result {
+    let provider = pk_recipient_from_bytes(provider).ok_or(VerificationError)?;
+    let verifier_secret = shared_secret_from_bytes(verifier_secret).ok_or(VerificationError)?;
+    let verifier = domain::Verifier::from_bytes(verifier).ok_or(VerificationError)?;
+    verifier
+        .verify(verifier_secret, &provider)
+        .map(|_| ())
+        .ok_or(VerificationError)
 }
 
-pub(crate) fn process(
-    randomness: &Randomness,
-    redemption: &Redemption,
-) -> Option<Validating> {
-    let provider = Provider::from(*randomness);
-    let redemption = postcard::from_bytes(redemption).ok()?;
-    provider.validate(redemption)
-}
-
-pub(crate) fn validate(
-    draft: Validating,
-    mask: &Mask,
-) -> Validation {
-    let mask = domain::Mask(*mask);
-    let validation = draft.finalize_with_mask(mask);
-    postcard::to_allocvec(&validation)
-        .expect("serialization should not fail")
-        .try_into()
-        .expect("known size")
-}
-
-#[derive(Debug)]
-pub(crate) enum AuthorizationError {
-    InvalidInput,
-    Unauthorized,
-}
-
-pub(crate) fn authorize(
-    validation: &api::Validation,
-    identifier: &api::Identifier,
-) -> Result<(), AuthorizationError> {
-    let validation: domain::Validation = postcard::from_bytes(validation)
-        .map_err(|_| AuthorizationError::InvalidInput)?;
-    let identifier = postcard::from_bytes(identifier)
-        .map_err(|_| AuthorizationError::InvalidInput)?;
-    if validation.authorize(&identifier) { Ok(()) } else {
-        Err(AuthorizationError::Unauthorized)
-    }
-}
-
-pub(crate) fn challenge(
-    randomness: &Randomness,
-) -> Challenge {
-    let (_, challenge) = Provider { randomness: *randomness }.challenge();
-    postcard::to_allocvec(&challenge)
-        .expect("serialization should not fail")
-        .try_into()
-        .expect("known size")
-}
-
-#[derive(Debug)]
-pub enum ProofError {
-    SyntaxError,
-    ContentError(domain::ProofError),
+pub(crate) fn challenge(randomness: &Randomness) -> Challenge {
+    let provider = domain::Provider {
+        randomness: *randomness,
+    };
+    let (_, commitments) = provider.challenge();
+    let mut challenge = [0u8; 66];
+    let mut buffer = &mut challenge[..];
+    buffer
+        .write_all(
+            p256::PublicKey::from_sec1_bytes(&commitments.hiding().serialize().unwrap())
+                .unwrap()
+                .to_encoded_point(true)
+                .as_bytes(),
+        )
+        .unwrap();
+    buffer
+        .write_all(
+            p256::PublicKey::from_sec1_bytes(&commitments.binding().serialize().unwrap())
+                .unwrap()
+                .to_encoded_point(true)
+                .as_bytes(),
+        )
+        .unwrap();
+    challenge
 }
 
 pub(crate) fn prove(
-    randomness: &api::Randomness,
-    identifier: &api::Identifier,
-    device: &api::Device,
-    mask: &api::Mask,
-    payload: &api::Payload,
-    pass: &api::Pass,
-) -> Result<api::Evidence, ProofError> {
-    let mask = domain::Mask(*mask);
-    let pass = postcard::from_bytes(pass).map_err(|_| ProofError::SyntaxError)?;
-    let identifier = postcard::from_bytes(identifier)
-        .map_err(|_| ProofError::SyntaxError)?;
-    let device: Element = postcard::from_bytes(device)
-        .map_err(|_| ProofError::SyntaxError)?;
-    let provider = Provider::from(*randomness);
-    let subscriber = Subscriber { device_vk: device.into(), identifier };
-    let evidence = provider.prove(&subscriber, mask, payload, pass)
-        .map_err(|e| ProofError::ContentError(e))?;
-    Ok(postcard::to_allocvec(&evidence)
-        .expect("serialization should not fail")
-        .try_into()
-        .expect("known size"))
+    randomness: &Randomness,
+    provider: &Key,
+    verifier_secret: &Secret,
+    verifier: &Verifier,
+    pk_device: &Key,
+    client_data_hash: &Digest,
+    pass_secret: &Secret,
+    pass: &Pass,
+) -> Option<(Authenticator, Proof, Client)> {
+    let mut buf = [0u8; 32];
+    buf.copy_from_slice(randomness);
+    let provider_randomness = Provider { randomness: buf };
+    let provider = pk_recipient_from_bytes(provider)?;
+    let verifier_secret = shared_secret_from_bytes(verifier_secret)?;
+    let verifier = domain::Verifier::from_bytes(verifier)?;
+    let pk_device = p256::ecdsa::VerifyingKey::from_sec1_bytes(pk_device).ok()?;
+    let pass_secret = shared_secret_from_bytes(pass_secret)?;
+    let pass = domain::Pass::from_bytes(pass)?;
+    let transcript = provider_randomness.prove(&verifier, &pk_device, client_data_hash, &pass, verifier_secret, pass_secret, &provider)?;
+    let mut buf_authenticator = [0u8; 48];
+    buf_authenticator.copy_from_slice(transcript.authenticator.to_bytes().as_slice());
+    let mut buf_proof = [0u8; 64];
+    buf_proof.copy_from_slice(transcript.proof.sig_device.to_bytes().as_slice());
+    let mut buf_client = [0u8; 129];
+    buf_client.copy_from_slice(&transcript.client.to_bytes());
+    Some((buf_authenticator, buf_proof, buf_client))
 }

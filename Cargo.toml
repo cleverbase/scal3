@@ -2,28 +2,22 @@
 name = "scal3"
 description = "Verify that systems operate under your sole control (prototype, patent pending)"
 license = "CC-BY-NC-4.0"
-version = "0.2.0-SNAPSHOT"
+version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/cleverbase/scal3"
 authors = ["Sander Dijkhuis <sander.dijkhuis@cleverbase.com>"]
 readme = "src/README.md"
 categories = ["authentication", "cryptography"]
-exclude = ["/README.md", "/docs/media/scal3.png"]
+exclude = ["/README.md", "/docs/**/*"]
 
 [dependencies]
-frost-core = { version = "0.7.0", features = ["internals"] }
-frost-p256 = { version = "0.7.0" }
-libc = "0.2.153"
-p256 = "0.13.2"
-postcard = "1.0.8"
-rand = "0.8.5"
-serde = { version = "1.0.197", features = ["derive"] }
-serdect = "0.2.0"
+frost-core = "2.1.0"
+frost-p256 = "2.1.0"
+p256 = { version = "0.13.2", features = ["serde"] }
+rand_chacha = "0.9.0"
 sha2 = "0.10.8"
-signature = { version = "2.2.0", features = ["digest"] }
-zeroize = "1.7.0"
+signature = "2.2.0"
+hpke = "0.13.0"
 
 [dev-dependencies]
-hex = "0.4.3"
-hex-literal = "0.4.1"
 hmac = "0.12.1"

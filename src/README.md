@@ -3,7 +3,10 @@
 [Verify that systems operate under your sole control](https://github.com/cleverbase/scal3).
 SCAL3 provides verifiable sole control assurance levels with tamper-evident
 logs for multi-factor authentication transparency. This prototype contains
-example functions and data.
+example functions and data. It implements the protocol from the technical
+report “Authentication and sole control at a high level of assurance on
+widespread smartphones with threshold signatures” in [Cryptology ePrint
+Archive, Paper 2025/267](https://eprint.iacr.org/2025/267).
 
 <div class="warning">
 <strong>Do not use this code for production.</strong>
@@ -39,8 +42,8 @@ To achieve SCAL3, the provider manages three assets:
 To enroll for a certificate, the subscriber typically uses a protocol such as
 ACME ([RFC 8555](https://www.rfc-editor.org/rfc/rfc8555)). The
 certificate binds to the subscriber’s subject identifier an (attested) P-256
-ECDSA signing key from Secure Enclave, StrongBox, or Android’s hardware-backed
-Keystore. This is the possession factor for authentication.
+ECDSA signing key from Secure Enclave, StrongBox Keymaster, or Android’s
+hardware-backed Keystore. This is the possession factor for authentication.
 
 During enrollment, the provider also performs generation of a SCAL3 user
 identifier and pre-authorization of this identifier for certificate issuance.
@@ -72,27 +75,20 @@ To the provider and subscriber, signing shares are assigned of the form
   (mod <i>p</i>)
 where the provider has participant identifier <i>i</i> = 1
 and the subscriber has <i>i</i> = 2.
-During enrollment, the provider has randomly generated <i>a</i><sub>10</sub>
-and <i>a</i><sub>11</sub> and the subscriber has randomly generated
-<i>a</i><sub>20</sub> and <i>a</i><sub>21</sub>.
-The other information is shared using the FROST distributed key generation
-protocol.
+During enrollment, the subscriber has randomly generated joint secret key
+<i>s</i> = <i>s</i><sub>1</sub><i>s</i><sub>2</sub> and computed
+<i>a</i><sub><i>ij</i></sub> as a trusted dealer.
 The resulting joint verifying key equals
 <i>V</i><sub>k</sub> = [<i>a</i><sub>10</sub> + <i>a</i><sub>20</sub>]<i>G</i>.
 
 The SCAL3 user identifier consists of <i>V</i><sub>k</sub> and:
 
-- <i>s</i><sub>1</sub> + <i>m</i><sub>1</sub> (mod <i>p</i>)
-  where <i>m</i><sub>1</sub> is a key securely derived by the provider from
-  <i>V</i><sub>k</sub> using the HSM, for example using
-  HKDF-Expand(<i>V</i><sub>k</sub>) from
-  [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869) with an HSM key, 
-  followed by `hash_to_field` from
-  [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380);
+- <i>s</i><sub>1</sub> encrypted for the provider;
 - <i>s</i><sub>2</sub> + <i>m</i><sub>2</sub> (mod <i>p</i>)
   where <i>m</i><sub>2</sub> is a key securely derived by the subscriber from
-  the PIN, for example using HKDF-Expand(<i>PIN</i>) followed by
-  `hash_to_field`.
+  the PIN, for example using PRF(<i>k</i>, <i>PIN</i>) with a local
+  hardware-backed key <i>k</i>, followed by `hash_to_field` from
+  [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380).
 
 During authentication, the subscriber generates an ephemeral ECDSA binding key
 pair
