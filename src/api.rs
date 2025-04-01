@@ -53,13 +53,13 @@ pub type Validation = [u8; 97];
 
 /// Authentication challenge data.
 ///
-/// Contains [provider] commitments ([<i>d</i><sub>1</sub>]<i>G</i>, [<i>d</i><sub>2</sub>]<i>G</i>).
+/// Contains [provider] commitments ([<i>d</i><sub>1</sub>]<i>G</i>, [<i>e</i><sub>1</sub>]<i>G</i>).
 pub type Challenge = [u8; 66];
 
 /// Response to a [Challenge].
 ///
-/// Contains a binding verifying key, [subscriber] commitments `([d2]G, [e2]G)`,
-/// [subscriber] signature share `z2`, a device signature, and a binding
+/// Contains a binding verifying key, [subscriber] commitments ([<i>d</i><sub>2</sub>]<i>G</i>, [<i>e</i><sub>2</sub>]<i>G</i>),
+/// [subscriber] signature share <i>z</i><sub>2</sub>], a device signature, and a binding
 /// signature.
 pub type Pass = [u8; 259];
 
