@@ -73,3 +73,15 @@ pub(crate) fn prove(
     buf_client.copy_from_slice(&transcript.client.to_bytes());
     Some((buf_authenticator, buf_proof, buf_client))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_challenge() {
+        let randomness = [1u8; 32];
+        let challenge = challenge(&randomness);
+        println!("{:x?}", challenge);
+    }
+}

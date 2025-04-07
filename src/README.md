@@ -128,8 +128,175 @@ All subscriber’s contributions are part of a single “pass the authentication
 challenge” message that includes:
 
 - a device signature created using the possession factor over <i>c</i>;
-- a binding signature created using <i>s</i><sub>b</sub> over the device 
-  signature. 
+- a binding signature created using <i>s</i><sub>b</sub> over the device
+  signature.
 
 This construction makes sure that without simultaneous control over both
 authentication factors, evidence cannot be forged.
+
+# Examples
+
+All functions are pure, enabling a mostly stateless server
+implementation and easy integration on mobile client platforms.
+
+## Setup
+
+Generate a P-256 ECDH key pair and a PRF secret key for the provider.
+In production, protect these with a hardware security module.
+
+## Enrolment
+
+Generate a P-256 ECDSA key pair and a PRF secret key for the subscriber.
+In production, protect these with a local secure area.
+
+Aborting upon failure, the provider and subscriber execute their
+assigned functions in this order:
+
+1. subscriber: derive a mask, obtain randomness,
+   register and send a key with a verifier.
+2. provider: derive the secret and accept.
+
+In production, the provider would need to furthermore verify
+possession of the device key and bind these, for example in
+a public key certificate.
+
+## Authentication
+
+Aborting upon failure:
+
+1. provider: derive randomness, challenge and send
+   a challenge.
+2. subscriber: derive a mask, obtain randomness,
+   authenticate, create proof of possession,
+   pass and send the outcome.
+3. provider: prove authentication and log
+   authenticator, proof and client verification data.
+
+## Auditing
+
+The subscriber or any other party with access can verify the evidence
+consisting of authenticator, proof and client data.
+
+# Data model
+
+Requests and responses are encoded as CBOR ([RFC 8949](https://www.rfc-editor.org/rfc/rfc8949)).
+Below are the specifications in CDDL ([RFC 8610](https://www.rfc-editor.org/rfc/rfc8610)).
+
+```cddl
+Mask          = bytes .size 32
+Randomness    = bytes .size 32
+Key           = bytes .size 33 ; P-256 public key
+Proof         = bytes .size 64 ; P-256 ECDSA signature
+Secret        = bytes .size 32 ; P-256 ECDH shared secret
+Digest        = bytes .size 32 ; SHA-256 digest
+Challenge     = bytes
+Verifier      = bytes
+Pass          = bytes
+Authenticator = bytes
+Client        = bytes
+
+credential = (
+    verifier:   Verifier,
+    device:     Key,
+)
+
+transcript = (
+    authenticator: Authenticator,
+    proof:         Proof,
+    client:        Client,
+)
+
+providerState = (
+    credential,
+    provider:   Key,
+    secret:     Secret,
+)
+
+subscriberState = (
+    mask:       Mask,
+    randomness: Randomness,
+    provider:   Key,
+)
+
+ErrorResponse = {
+    error: "missing value" / "invalid input" / "schema mismatch"
+}
+
+Request = { $$request }
+
+$$request //= (
+    type:        "register",
+    ? subscriberState
+)
+RegistrationResponse = ErrorResponse / {
+    ? subscriber: Key,
+    ? verifier:   Verifier,
+}
+
+$$request //= (
+    type:        "accept",
+    ? providerState
+)
+AcceptResponse = ErrorResponse / {
+    ? result: "accepted" / "rejected"
+}
+
+$$request //= (
+    type:        "challenge",
+    ? randomness: Randomness,
+)
+ChallengeResponse = ErrorResponse / {
+    ? challenge:  Challenge,
+}
+
+$$request //= (
+    type:        "authenticate",
+    ? subscriberState,
+    ? credential,
+    ? subscriber: Key,
+    ? challenge:  Challenge,
+    ? hash:       Digest,
+)
+AuthenticationResponse = ErrorResponse / {
+    ? digest:     Digest,
+}
+
+$$request //= (
+    type:        "pass",
+    ? proof:      Proof,
+)
+PassResponse = ErrorResponse / {
+    ? sender:     Key,
+    ? pass:       Pass,
+}
+
+$$request //= (
+    type:        "prove",
+    ? providerState,
+    ? randomness: Randomness,
+    ? hash:       Digest,
+    ? passSecret: Secret,
+    ? pass:       Pass,
+)
+ProveResponse = ErrorResponse / {
+    ? transcript,
+}
+
+$$request //= (
+    type:        "verify",
+    ? credential,
+    ? transcript,
+    ? hash:       Digest,
+)
+VerifyResponse = ErrorResponse / {
+    ? result: "verified" / "rejected"
+}
+```
+
+# Risks
+
+- The implementation may still be vulnerable to side channel attacks,
+  such as timing attacks and reading memory that was not zeroized in time.
+  The security dependencies offer functions to implement this properly.
+- Not all pass details are protected using the device signature, enabling
+  a denial-of-service attack by changing details.
