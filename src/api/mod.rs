@@ -1,6 +1,7 @@
 pub mod provider;
 pub mod subscriber;
 
+// use wasm_bindgen::prelude::wasm_bindgen;
 use crate::program;
 
 /// Enrolled verification data for the [subscriber].
@@ -62,16 +63,27 @@ pub type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 /// Contains a SHA-256 hash digest.
 pub type Digest = [u8; 32];
 
+//#[wasm_bindgen]
+#[no_mangle]
+pub fn foo() -> bool { true }
+
 /// Verifies evidence that the identified [subscriber] passed the [Digest].
-#[export_name = "scal3_verify"]
-pub extern "C" fn verify(
-    verifier: &Verifier,
-    pk_device: &Key,
-    client_data_hash: &Digest,
-    authenticator: &Authenticator,
-    proof: &Proof,
-    client: &Client,
+//#[wasm_bindgen]
+#[no_mangle]
+pub fn verify(
+    verifier: *const Verifier,
+    pk_device: *const Key,
+    client_data_hash: *const Digest,
+    authenticator: *const Authenticator,
+    proof: *const Proof,
+    client: *const Client,
 ) -> bool {
+    let verifier = unsafe { &*verifier };
+    let pk_device = unsafe { &*pk_device };
+    let client_data_hash = unsafe { &*client_data_hash };
+    let authenticator = unsafe { &*authenticator };
+    let proof = unsafe { &*proof };
+    let client = unsafe { &*client };
     program::verify(
         verifier,
         pk_device,

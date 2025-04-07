@@ -7,15 +7,27 @@ use crate::domain;
 /// Process handle for passing a [Challenge].
 pub struct Authentication(domain::Authentication);
 
+#[no_mangle]
+pub extern "C" fn foobar(invar: [u8; 8]) -> [u8; 4] {
+    let mut outvar = [0u8; 4];
+    outvar.copy_from_slice(&invar[..4]);
+    outvar
+}
+
 /// Enrolls the subscriber by providing a [Mask], creating a [Verifier].
-#[export_name = "scal3_subscriber_register"]
+#[no_mangle]
 pub extern "C" fn register(
-    mask: &Mask,
-    randomness: &Randomness,
-    provider: &Key,
-    subscriber: &mut Key,
-    verifier: &mut Verifier,
+    mask: *const Mask,
+    randomness: *const Randomness,
+    provider: *const Key,
+    subscriber: *mut Key,
+    verifier: *mut Verifier,
 ) -> bool {
+    let mask = unsafe { &*mask };
+    let randomness = unsafe { &*randomness };
+    let provider = unsafe { &*provider };
+    let subscriber = unsafe { &mut *subscriber };
+    let verifier = unsafe { &mut *verifier };
     match program::subscriber::register(mask, randomness, provider) {
         None => false,
         Some((k, v)) => {

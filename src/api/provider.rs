@@ -10,8 +10,13 @@ pub extern "C" fn accept(provider: &Key, verifier_secret: &Secret, verifier: &Ve
 }
 
 /// Creates a [Challenge] based on [Randomness] derived from challenge metadata.
-#[export_name = "scal3_provider_challenge"]
-pub extern "C" fn challenge(randomness: &Randomness, challenge: &mut Challenge) {
+//#[wasm_bindgen]
+#[no_mangle]
+pub extern "C" fn challenge(randomness: *const Randomness, challenge: *mut Challenge) {
+    assert!(!randomness.is_null());
+    assert!(!challenge.is_null());
+    let randomness = unsafe { &*randomness };
+    let challenge = unsafe { &mut *challenge };
     challenge.copy_from_slice(&program::provider::challenge(randomness));
 }
 
