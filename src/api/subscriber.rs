@@ -7,13 +7,6 @@ use crate::domain;
 /// Process handle for passing a [Challenge].
 pub struct Authentication(domain::Authentication);
 
-#[no_mangle]
-pub extern "C" fn foobar(invar: [u8; 8]) -> [u8; 4] {
-    let mut outvar = [0u8; 4];
-    outvar.copy_from_slice(&invar[..4]);
-    outvar
-}
-
 /// Enrolls the subscriber by providing a [Mask], creating a [Verifier].
 #[no_mangle]
 pub extern "C" fn register(
@@ -39,7 +32,7 @@ pub extern "C" fn register(
 }
 
 /// Starts passing a [Challenge].
-#[export_name = "scal3_subscriber_authenticate"]
+#[no_mangle]
 pub extern "C" fn authenticate(
     mask: &Mask,
     randomness: &Randomness,
@@ -68,7 +61,7 @@ pub extern "C" fn authenticate(
 }
 
 /// Finishes [Authentication] using a [Proof].
-#[export_name = "scal3_subscriber_pass"]
+#[no_mangle]
 pub extern "C" fn pass(
     authentication: *mut Authentication,
     proof: &Proof,

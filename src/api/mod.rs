@@ -63,10 +63,6 @@ pub type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 /// Contains a SHA-256 hash digest.
 pub type Digest = [u8; 32];
 
-//#[wasm_bindgen]
-#[no_mangle]
-pub fn foo() -> bool { true }
-
 /// Verifies evidence that the identified [subscriber] passed the [Digest].
 //#[wasm_bindgen]
 #[no_mangle]

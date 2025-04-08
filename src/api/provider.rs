@@ -4,7 +4,7 @@ use crate::api::*;
 use crate::program;
 
 /// Upon registration, checks integrity of a [Verifier].
-#[export_name = "scal3_provider_accept"]
+#[no_mangle]
 pub extern "C" fn accept(provider: &Key, verifier_secret: &Secret, verifier: &Verifier) -> bool {
     program::provider::accept(provider, verifier_secret, verifier).is_ok()
 }
@@ -21,7 +21,7 @@ pub extern "C" fn challenge(randomness: *const Randomness, challenge: *mut Chall
 }
 
 /// Finishes authentication by creating evidence that [Pass] is correct.
-#[export_name = "scal3_provider_prove"]
+#[no_mangle]
 pub extern "C" fn prove(
     randomness: &Randomness,
     provider: &Key,
