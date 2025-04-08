@@ -8,14 +8,19 @@ use crate::domain;
 pub struct Authentication(domain::Authentication);
 
 /// Enrolls the subscriber by providing a [Mask], creating a [Verifier].
-#[export_name = "scal3_subscriber_register"]
+#[no_mangle]
 pub extern "C" fn register(
-    mask: &Mask,
-    randomness: &Randomness,
-    provider: &Key,
-    subscriber: &mut Key,
-    verifier: &mut Verifier,
+    mask: *const Mask,
+    randomness: *const Randomness,
+    provider: *const Key,
+    subscriber: *mut Key,
+    verifier: *mut Verifier,
 ) -> bool {
+    let mask = unsafe { &*mask };
+    let randomness = unsafe { &*randomness };
+    let provider = unsafe { &*provider };
+    let subscriber = unsafe { &mut *subscriber };
+    let verifier = unsafe { &mut *verifier };
     match program::subscriber::register(mask, randomness, provider) {
         None => false,
         Some((k, v)) => {
@@ -27,7 +32,7 @@ pub extern "C" fn register(
 }
 
 /// Starts passing a [Challenge].
-#[export_name = "scal3_subscriber_authenticate"]
+#[no_mangle]
 pub extern "C" fn authenticate(
     mask: &Mask,
     randomness: &Randomness,
@@ -56,7 +61,7 @@ pub extern "C" fn authenticate(
 }
 
 /// Finishes [Authentication] using a [Proof].
-#[export_name = "scal3_subscriber_pass"]
+#[no_mangle]
 pub extern "C" fn pass(
     authentication: *mut Authentication,
     proof: &Proof,
