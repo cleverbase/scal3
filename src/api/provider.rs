@@ -23,18 +23,29 @@ pub extern "C" fn challenge(randomness: *const Randomness, challenge: *mut Chall
 /// Finishes authentication by creating evidence that [Pass] is correct.
 #[no_mangle]
 pub extern "C" fn prove(
-    randomness: &Randomness,
-    provider: &Key,
-    verifier_secret: &Secret,
-    verifier: &Verifier,
-    pk_device: &Key,
-    client_data_hash: &Digest,
-    pass_secret: &Secret,
-    pass: &Pass,
-    authenticator: &mut Authenticator,
-    proof: &mut Proof,
-    client: &mut Client,
+    randomness: *const Randomness,
+    provider: *const Key,
+    verifier_secret: *const Secret,
+    verifier: *const Verifier,
+    pk_device: *const Key,
+    client_data_hash: *const Digest,
+    pass_secret: *const Secret,
+    pass: *const Pass,
+    authenticator: *mut Authenticator,
+    proof: *mut Proof,
+    client: *mut Client,
 ) -> bool {
+    let randomness = unsafe { &*randomness };
+    let provider = unsafe { &*provider };
+    let verifier_secret = unsafe { &*verifier_secret };
+    let verifier = unsafe { &*verifier };
+    let pk_device = unsafe { &*pk_device };
+    let client_data_hash = unsafe { &*client_data_hash };
+    let pass_secret = unsafe { &*pass_secret };
+    let pass = unsafe { &*pass };
+    let authenticator = unsafe { &mut *authenticator };
+    let proof = unsafe { &mut *proof };
+    let client = unsafe { &mut *client };
     match program::provider::prove(
         randomness,
         provider,
