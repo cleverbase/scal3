@@ -1,8 +1,9 @@
+pub mod buffer;
 pub mod provider;
 pub mod subscriber;
 
-// use wasm_bindgen::prelude::wasm_bindgen;
-use crate::program;
+use crate::{domain, program};
+use serde::{Deserialize, Serialize};
 
 /// Enrolled verification data for the [subscriber].
 ///
@@ -63,32 +64,102 @@ pub type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 /// Contains a SHA-256 hash digest.
 pub type Digest = [u8; 32];
 
-/// Verifies evidence that the identified [subscriber] passed the [Digest].
-//#[wasm_bindgen]
-#[no_mangle]
-pub fn verify(
-    verifier: *const Verifier,
-    pk_device: *const Key,
-    client_data_hash: *const Digest,
-    authenticator: *const Authenticator,
-    proof: *const Proof,
-    client: *const Client,
-) -> bool {
-    let verifier = unsafe { &*verifier };
-    let pk_device = unsafe { &*pk_device };
-    let client_data_hash = unsafe { &*client_data_hash };
-    let authenticator = unsafe { &*authenticator };
-    let proof = unsafe { &*proof };
-    let client = unsafe { &*client };
-    program::verify(
-        verifier,
-        pk_device,
-        client_data_hash,
-        authenticator,
-        proof,
-        client,
-    )
-    .is_ok()
+// fn decode_verify_request(bytes: &[u8]) -> Result<>
+
+#[derive(Serialize, Deserialize)]
+struct Credential {
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    verifier: Option<Verifier>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    device: Option<Key>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Transcript {
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    authenticator: Option<Authenticator>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    proof: Option<Proof>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    client: Option<Client>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct VerifyRequest {
+    #[serde(flatten)]
+    credential: Credential,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    hash: Option<Digest>,
+    #[serde(flatten)]
+    transcript: Transcript,
+}
+
+impl VerifyRequest {
+    fn handle(&self) -> Option<domain::Result> {
+        Some(program::verify(
+            &self.credential.verifier?,
+            &self.credential.device?,
+            &self.hash?,
+            &self.transcript.authenticator?,
+            &self.transcript.proof?,
+            &self.transcript.client?,
+        ))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct VerifyResponse {
+    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    result: Option<String>,
+    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl VerifyResponse {
+    fn result(value: &str) -> Self {
+        Self {
+            result: Some(value.to_string()),
+            error: None,
+        }
+    }
+    fn error(value: &str) -> Self {
+        Self {
+            result: None,
+            error: Some(value.to_string()),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, PartialEq)]
+pub enum VerifyStatus {
+    InvalidPointer = -1,
+    SerializationError = -2,
+    Done = 0,
+}
+
+/// Verifies evidence that the identified [subscriber] passed the digest.
+#[export_name = "scal3_verify"]
+pub unsafe extern "C" fn verify(req_buf: *const u8, res_buf: *mut u8) -> VerifyStatus {
+    if req_buf.is_null() || res_buf.is_null() {
+        return VerifyStatus::InvalidPointer;
+    }
+    let request = std::slice::from_raw_parts(req_buf, buffer::size());
+    let response = std::slice::from_raw_parts_mut(res_buf, buffer::size());
+    let mut serializer = minicbor_serde::Serializer::new(response);
+    let request = minicbor_serde::from_slice::<VerifyRequest>(request);
+    let response = match request {
+        Ok(r) => match r.handle() {
+            None => VerifyResponse::error("missing value"),
+            Some(Ok(_)) => VerifyResponse::result("verified"),
+            Some(Err(_)) => VerifyResponse::result("falsified"),
+        },
+        Err(_) => VerifyResponse::error("schema mismatch"),
+    };
+    match response.serialize(&mut serializer) {
+        Ok(_) => VerifyStatus::Done,
+        Err(_) => VerifyStatus::SerializationError,
+    }
 }
 
 #[cfg(test)]
@@ -101,8 +172,9 @@ mod test {
     use p256::{NistP256, NonZeroScalar};
     use sha2::{Digest as Sha2Digest, Sha256};
     use signature::hazmat::PrehashSigner;
-    use std::ptr::null_mut;
     use signature::rand_core::{OsRng, RngCore};
+    use std::ptr::null_mut;
+    use std::slice;
 
     #[test]
     fn example() {
@@ -220,13 +292,38 @@ mod test {
             &mut client
         ));
 
-        assert!(verify(
-            &verifier,
-            &pk_subscriber,
-            &client_data_hash,
-            &authenticator,
-            &proof,
-            &client
-        ));
+        let req_buf = buffer::allocate();
+        let res_buf = buffer::allocate();
+
+        let mut serializer = minicbor_serde::Serializer::new(unsafe {
+            slice::from_raw_parts_mut(req_buf, buffer::size())
+        });
+        let mut deserializer = minicbor_serde::Deserializer::new(unsafe {
+            slice::from_raw_parts(res_buf, buffer::size())
+        });
+
+        VerifyRequest {
+            credential: Credential {
+                verifier: Some(verifier),
+                device: Some(pk_subscriber),
+            },
+            hash: Some(client_data_hash),
+            transcript: Transcript {
+                authenticator: Some(authenticator),
+                proof: Some(proof),
+                client: Some(client),
+            },
+        }
+        .serialize(&mut serializer)
+        .unwrap();
+        let result = unsafe { verify(req_buf, res_buf) };
+        assert_eq!(result, VerifyStatus::Done);
+        let response = VerifyResponse::deserialize(&mut deserializer).unwrap();
+        assert_eq!(response.result, Some("verified".to_string()));
+
+        unsafe {
+            buffer::free(req_buf);
+            buffer::free(res_buf);
+        }
     }
 }

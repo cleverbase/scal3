@@ -31,6 +31,34 @@ pub extern "C" fn register(
     }
 }
 
+// pub struct Authentication2 {
+//     content: String
+// }
+
+// #[export_name = "scal3_authenticate"]
+// pub unsafe extern "C" fn authenticate2(
+//     // authentication: *mut *mut Authentication2, // risk: the requester allocates memory to store the pointer; better to just return the pointer
+//     req_buf: *const u8,
+//     res_buf: *mut u8,
+// ) -> *mut Authentication2 { // no just return *mut Authentication
+//     let a = Authentication2 { content: "hello".to_string() };
+//     // assert_ne!(authentication, null_mut());
+//     // *authentication = Box::into_raw(Box::new(a));
+//     // *authentication
+//     Box::into_raw(Box::new(a))
+// }
+// 
+// #[export_name = "scal3_pass"]
+// pub unsafe extern "C" fn pass2(
+//     authentication: *mut Authentication2,
+//     req_buf: *const u8,
+//     res_buf: *mut u8,
+// ) -> u8 {
+//     let a = Box::from_raw(authentication);
+//     res_buf.copy_from(a.content.as_ptr(), a.content.len());
+//     0
+// }
+
 /// Starts passing a [Challenge].
 #[no_mangle]
 pub extern "C" fn authenticate(
