@@ -8,7 +8,7 @@ use crate::buffer::Buffer;
 /// # Risks
 /// 
 /// - Does not verify the device public key.
-#[no_mangle]
+#[export_name = "scal3_provider_accept"]
 pub extern "C" fn accept(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
         return Status::BufferError;
@@ -28,7 +28,7 @@ pub extern "C" fn accept(buffer: *mut Buffer) -> Status {
 }
 
 /// Creates a challenge based on randomness derived from challenge metadata.
-#[no_mangle]
+#[export_name = "scal3_provider_challenge"]
 pub extern "C" fn challenge(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
         return Status::BufferError;

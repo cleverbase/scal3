@@ -8,7 +8,7 @@ use std::ptr::null_mut;
 pub struct Authentication(domain::Authentication);
 
 /// Enrolls the [subscriber] by providing a mask, creating a verifier.
-#[no_mangle]
+#[export_name = "scal3_subscriber_register"]
 pub extern "C" fn register(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
         return Status::BufferError;
