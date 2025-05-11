@@ -65,6 +65,38 @@ pub type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 /// Contains a SHA-256 hash digest.
 pub type Digest = [u8; 32];
 
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Interaction {
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    provider: Option<Key>,
+    #[serde(with = "serde_bytes", default = "Option::default", rename = "verifierSecret")]
+    secret: Option<Secret>,
+    #[serde(flatten)]
+    credential: Credential,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ProveRequest {
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    randomness: Option<Randomness>,
+    #[serde(flatten)]
+    interaction: Interaction,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    client_data_hash: Option<Digest>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pass_secret: Option<Secret>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pass: Option<Pass>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct ProveResponse {
+    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    result: Option<Transcript>,
+    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 struct Credential {
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -143,7 +175,7 @@ pub extern "C" fn verify(buffer: *mut Buffer) -> VerifyStatus {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
         return VerifyStatus::InvalidPointer;
     };
-    let response = match minicbor_serde::from_slice::<VerifyRequest>(buffer.0.as_slice()) {
+    let response = match buffer.deserialize::<VerifyRequest>() {
         Ok(request) => match request.handle() {
             None => VerifyResponse::error("missing value"),
             Some(Ok(_)) => VerifyResponse::result("verified"),
@@ -151,9 +183,7 @@ pub extern "C" fn verify(buffer: *mut Buffer) -> VerifyStatus {
         },
         Err(_) => VerifyResponse::error("schema mismatch"),
     };
-    match response.serialize(&mut minicbor_serde::Serializer::new(
-        buffer.0.as_mut_slice(),
-    )) {
+    match buffer.serialize(response) {
         Ok(_) => VerifyStatus::Done,
         Err(_) => VerifyStatus::SerializationError,
     }
@@ -163,7 +193,6 @@ pub extern "C" fn verify(buffer: *mut Buffer) -> VerifyStatus {
 mod test {
     use crate::api::*;
     use crate::buffer::Buffer;
-    use crate::provider::{Interaction, ProveRequest, ProveResponse};
     use hmac::digest::{crypto_common, KeyInit};
     use hmac::{Hmac, Mac};
     use p256::elliptic_curve::sec1::ToEncodedPoint;
@@ -286,34 +315,30 @@ mod test {
             secret: Some(ecdh(&sk_provider, &subscriber)),
             credential: credential.clone(),
         };
-        let mut serializer = minicbor_serde::Serializer::new(buffer.0.as_mut_slice());
-        ProveRequest {
+        buffer.serialize(ProveRequest {
             randomness: Some(randomness),
             interaction,
             client_data_hash: Some(client_data_hash),
             pass_secret: Some(ecdh(&sk_provider, &sender)),
             pass: Some(pass),
-        }
-        .serialize(&mut serializer)?;
+        })?;
 
         let result = provider::prove(&mut buffer);
         assert_eq!(result, VerifyStatus::Done);
 
-        let response = minicbor_serde::from_slice::<ProveResponse>(buffer.0.as_slice()).unwrap();
+        let response = buffer.deserialize::<ProveResponse>()?;
         assert!(response.error.is_none());
         assert!(response.result.is_some());
         let transcript = response.result.unwrap();
 
-        let mut serializer = minicbor_serde::Serializer::new(buffer.0.as_mut_slice());
-        VerifyRequest {
+        buffer.serialize(VerifyRequest {
             credential,
             hash: Some(client_data_hash),
             transcript,
-        }
-        .serialize(&mut serializer)?;
+        })?;
         let result = verify(&mut buffer);
         assert_eq!(result, VerifyStatus::Done);
-        let response = minicbor_serde::from_slice::<VerifyResponse>(buffer.0.as_slice()).unwrap();
+        let response = buffer.deserialize::<VerifyResponse>()?;
         assert_eq!(response.error, None);
         assert_eq!(response.result, Some("verified".to_string()));
 
