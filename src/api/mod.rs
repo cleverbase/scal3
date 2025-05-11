@@ -2,6 +2,7 @@ pub mod buffer;
 pub mod provider;
 pub mod subscriber;
 
+use crate::buffer::Buffer;
 use crate::{domain, program};
 use serde::{Deserialize, Serialize};
 
@@ -63,26 +64,6 @@ pub type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 ///
 /// Contains a SHA-256 hash digest.
 pub type Digest = [u8; 32];
-
-// const BUFFER_SIZE: usize = 1024;
-//
-// pub struct Instance {
-//     buffer: [u8; BUFFER_SIZE],
-// }
-//
-// #[export_name = "scal3_init"]
-// pub extern "C" fn init() -> *mut Instance {
-//     let instance = Instance {
-//         buffer: [0u8; BUFFER_SIZE],
-//     };
-//     Box::into_raw(Box::new(instance))
-// }
-//
-// #[export_name = "scal3_finalize"]
-// pub extern "C" fn finalize(instance: *mut Instance) {
-//     assert!(!instance.is_null());
-//     let _ = unsafe { Box::from_raw(instance) };
-// }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Credential {
@@ -158,23 +139,21 @@ pub enum VerifyStatus {
 
 /// Verifies evidence that the identified [subscriber] passed the digest.
 #[export_name = "scal3_verify"]
-pub unsafe extern "C" fn verify(req_buf: *const u8, res_buf: *mut u8) -> VerifyStatus {
-    if req_buf.is_null() || res_buf.is_null() {
+pub extern "C" fn verify(buffer: *mut Buffer) -> VerifyStatus {
+    let Some(buffer) = (unsafe { buffer.as_mut() }) else {
         return VerifyStatus::InvalidPointer;
-    }
-    let request = std::slice::from_raw_parts(req_buf, buffer::size());
-    let response = std::slice::from_raw_parts_mut(res_buf, buffer::size());
-    let mut serializer = minicbor_serde::Serializer::new(response);
-    let request = minicbor_serde::from_slice::<VerifyRequest>(request);
-    let response = match request {
-        Ok(r) => match r.handle() {
+    };
+    let response = match minicbor_serde::from_slice::<VerifyRequest>(buffer.0.as_slice()) {
+        Ok(request) => match request.handle() {
             None => VerifyResponse::error("missing value"),
             Some(Ok(_)) => VerifyResponse::result("verified"),
             Some(Err(_)) => VerifyResponse::result("falsified"),
         },
         Err(_) => VerifyResponse::error("schema mismatch"),
     };
-    match response.serialize(&mut serializer) {
+    match response.serialize(&mut minicbor_serde::Serializer::new(
+        buffer.0.as_mut_slice(),
+    )) {
         Ok(_) => VerifyStatus::Done,
         Err(_) => VerifyStatus::SerializationError,
     }
@@ -183,6 +162,7 @@ pub unsafe extern "C" fn verify(req_buf: *const u8, res_buf: *mut u8) -> VerifyS
 #[cfg(test)]
 mod test {
     use crate::api::*;
+    use crate::buffer::Buffer;
     use crate::provider::{Interaction, ProveRequest, ProveResponse};
     use hmac::digest::{crypto_common, KeyInit};
     use hmac::{Hmac, Mac};
@@ -193,10 +173,9 @@ mod test {
     use signature::hazmat::PrehashSigner;
     use signature::rand_core::{OsRng, RngCore};
     use std::ptr::null_mut;
-    use std::slice;
 
     #[test]
-    fn example() {
+    fn example() -> Result<(), Box<dyn std::error::Error>> {
         fn sec1_compressed(pk: PublicKey<NistP256>) -> Key {
             pk.to_encoded_point(true).as_ref().try_into().unwrap()
         }
@@ -296,13 +275,7 @@ mod test {
 
         randomness.copy_from_slice(&prf(&k_provider, challenge_data));
 
-        let req_buf = buffer::allocate();
-        let res_buf = buffer::allocate();
-
-        let req_buf_ref = unsafe { &mut *req_buf };
-
-        let res_buf_ref = unsafe { &mut *res_buf };
-        let res_buf_arr = res_buf_ref.0.as_mut_slice();
+        let mut buffer = Buffer::new();
 
         let credential = Credential {
             verifier: Some(verifier),
@@ -313,54 +286,37 @@ mod test {
             secret: Some(ecdh(&sk_provider, &subscriber)),
             credential: credential.clone(),
         };
-
-        let prove_request = ProveRequest {
+        let mut serializer = minicbor_serde::Serializer::new(buffer.0.as_mut_slice());
+        ProveRequest {
             randomness: Some(randomness),
             interaction,
             client_data_hash: Some(client_data_hash),
             pass_secret: Some(ecdh(&sk_provider, &sender)),
             pass: Some(pass),
-        };
-        {
-            let binding = req_buf_ref.0.as_mut_slice();
-            let mut serializer = minicbor_serde::Serializer::new(binding);
-            prove_request.serialize(&mut serializer).unwrap();
-        };
-        let result = unsafe { provider::prove(req_buf, res_buf) };
+        }
+        .serialize(&mut serializer)?;
+
+        let result = provider::prove(&mut buffer);
         assert_eq!(result, VerifyStatus::Done);
-        let mut deserializer = minicbor_serde::Deserializer::new(&res_buf_arr);
-        let response = ProveResponse::deserialize(&mut deserializer).unwrap();
-        assert!(response.result.is_some());
+
+        let response = minicbor_serde::from_slice::<ProveResponse>(buffer.0.as_slice()).unwrap();
         assert!(response.error.is_none());
+        assert!(response.result.is_some());
         let transcript = response.result.unwrap();
 
-        // let req_buf = buffer::allocate();
-        // let res_buf = buffer::allocate();
-        //
-        // let req_buf_ref = unsafe { &mut *req_buf };
-        // let req_buf_arr = req_buf_ref.0.as_mut_slice();
-        //
-        // let res_buf_ref = unsafe { &mut *res_buf };
-        // let res_buf_arr = res_buf_ref.0.as_mut_slice();
-        //
-        // let mut serializer = minicbor_serde::Serializer::new(req_buf_arr);
-        // let mut deserializer = minicbor_serde::Deserializer::new(res_buf_arr);
-        //
-        // VerifyRequest {
-        //     credential,
-        //     hash: Some(client_data_hash),
-        //     transcript,
-        // }
-        // .serialize(&mut serializer)
-        // .unwrap();
-        // let result = unsafe { verify(req_buf_arr.as_mut_ptr(), res_buf_arr.as_mut_ptr()) };
-        // assert_eq!(result, VerifyStatus::Done);
-        // let response = VerifyResponse::deserialize(&mut deserializer).unwrap();
-        // assert_eq!(response.result, Some("verified".to_string()));
-
-        unsafe {
-            buffer::free(req_buf);
-            buffer::free(res_buf);
+        let mut serializer = minicbor_serde::Serializer::new(buffer.0.as_mut_slice());
+        VerifyRequest {
+            credential,
+            hash: Some(client_data_hash),
+            transcript,
         }
+        .serialize(&mut serializer)?;
+        let result = verify(&mut buffer);
+        assert_eq!(result, VerifyStatus::Done);
+        let response = minicbor_serde::from_slice::<VerifyResponse>(buffer.0.as_slice()).unwrap();
+        assert_eq!(response.error, None);
+        assert_eq!(response.result, Some("verified".to_string()));
+
+        Ok(())
     }
 }

@@ -5,7 +5,7 @@ use crate::buffer::Buffer;
 use crate::program;
 
 struct AcceptRequest {
-    interaction: Interaction // has too much info: also device pk. would be good to verify though
+    interaction: Interaction, // has too much info: also device pk. would be good to verify though
 }
 
 /// Upon registration, checks the integrity of a verifier.
@@ -97,17 +97,12 @@ impl ProveResponse {
 
 /// Finishes authentication by creating evidence that the pass is correct.
 #[export_name = "scal3_provider_prove"]
-pub unsafe extern "C" fn prove(req_buf: *mut Buffer, res_buf: *mut Buffer) -> VerifyStatus {
-    if req_buf.is_null() || res_buf.is_null() {
+pub extern "C" fn prove(buffer: *mut Buffer) -> VerifyStatus {
+    let Some(buffer) = (unsafe { buffer.as_mut() }) else {
         return VerifyStatus::InvalidPointer;
-    }
-    let request = unsafe { &mut *req_buf }.0.as_mut_slice();
-    let response = unsafe { &mut *res_buf }.0.as_mut_slice();
-    let mut serializer = minicbor_serde::Serializer::new(response);
-    let mut deserializer = minicbor_serde::Deserializer::new(request);
-    let request = ProveRequest::deserialize(&mut deserializer);
-    let response = match request {
-        Ok(r) => match r.handle() {
+    };
+    let response = match minicbor_serde::from_slice::<ProveRequest>(buffer.0.as_slice()) {
+        Ok(request) => match request.handle() {
             None => ProveResponse::error("missing value"),
             Some(Some((a, p, c))) => ProveResponse::result(Transcript {
                 authenticator: Some(a),
@@ -118,7 +113,7 @@ pub unsafe extern "C" fn prove(req_buf: *mut Buffer, res_buf: *mut Buffer) -> Ve
         },
         Err(_) => ProveResponse::error("schema mismatch"),
     };
-    match response.serialize(&mut serializer) {
+    match response.serialize(&mut minicbor_serde::Serializer::new(buffer.0.as_mut_slice())) {
         Ok(_) => VerifyStatus::Done,
         Err(_) => VerifyStatus::SerializationError,
     }

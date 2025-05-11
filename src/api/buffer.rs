@@ -1,6 +1,12 @@
 const BUFFER_SIZE: usize = 1024;
 
-pub struct Buffer(pub(crate) [u8; BUFFER_SIZE]);
+pub struct Buffer(pub [u8; BUFFER_SIZE]);
+
+impl Buffer {
+    pub fn new() -> Self {
+        Self([0u8; BUFFER_SIZE])   
+    }
+}
 
 #[export_name = "scal3_buffer_size"]
 pub extern "C" fn size() -> usize {
