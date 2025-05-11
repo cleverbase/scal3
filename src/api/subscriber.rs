@@ -1,108 +1,75 @@
 //! User with a device under full control, subscribing to provider services.
 
-use std::ptr::null_mut;
 use crate::api::*;
 use crate::domain;
+use std::ptr::null_mut;
 
 /// Process handle for passing a [Challenge].
 pub struct Authentication(domain::Authentication);
 
-/// Enrolls the subscriber by providing a [Mask], creating a [Verifier].
+/// Enrolls the subscriber by providing a mask, creating a verifier.
 #[no_mangle]
-pub extern "C" fn register(
-    mask: *const Mask,
-    randomness: *const Randomness,
-    provider: *const Key,
-    subscriber: *mut Key,
-    verifier: *mut Verifier,
-) -> bool {
-    let mask = unsafe { &*mask };
-    let randomness = unsafe { &*randomness };
-    let provider = unsafe { &*provider };
-    let subscriber = unsafe { &mut *subscriber };
-    let verifier = unsafe { &mut *verifier };
-    match program::subscriber::register(mask, randomness, provider) {
-        None => false,
-        Some((k, v)) => {
-            subscriber.copy_from_slice(&k);
-            verifier.copy_from_slice(&v);
-            true
-        }
+pub extern "C" fn register(buffer: *mut Buffer) -> Status {
+    let Some(buffer) = (unsafe { buffer.as_mut() }) else {
+        return Status::InvalidPointer;
+    };
+    let response = match buffer.deserialize::<SubscriberState>() {
+        Ok(request) => match request.handle() {
+            None => RegisterResponse::error("missing value"),
+            Some(Some(registration)) => RegisterResponse::registration(registration),
+            Some(None) => RegisterResponse::error("invalid input"),
+        },
+        Err(_) => RegisterResponse::error("schema mismatch"),
+    };
+    match buffer.serialize(response) {
+        Ok(_) => Status::Done,
+        Err(_) => Status::SerializationError,
     }
 }
 
-// pub struct Authentication2 {
-//     content: String
-// }
-
-// #[export_name = "scal3_authenticate"]
-// pub unsafe extern "C" fn authenticate2(
-//     // authentication: *mut *mut Authentication2, // risk: the requester allocates memory to store the pointer; better to just return the pointer
-//     req_buf: *const u8,
-//     res_buf: *mut u8,
-// ) -> *mut Authentication2 { // no just return *mut Authentication
-//     let a = Authentication2 { content: "hello".to_string() };
-//     // assert_ne!(authentication, null_mut());
-//     // *authentication = Box::into_raw(Box::new(a));
-//     // *authentication
-//     Box::into_raw(Box::new(a))
-// }
-// 
-// #[export_name = "scal3_pass"]
-// pub unsafe extern "C" fn pass2(
-//     authentication: *mut Authentication2,
-//     req_buf: *const u8,
-//     res_buf: *mut u8,
-// ) -> u8 {
-//     let a = Box::from_raw(authentication);
-//     res_buf.copy_from(a.content.as_ptr(), a.content.len());
-//     0
-// }
-
 /// Starts passing a [Challenge].
-#[no_mangle]
-pub extern "C" fn authenticate(
-    mask: &Mask,
-    randomness: &Randomness,
-    provider: &Key,
-    subscriber: &Key,
-    verifier: &Verifier,
-    challenge: &Challenge,
-    client_data_hash: &Digest,
-    digest: &mut Digest,
-) -> *mut Authentication {
-    match program::subscriber::authenticate(
-        mask,
-        randomness,
-        provider,
-        subscriber,
-        verifier,
-        challenge,
-        client_data_hash,
-    ) {
-        None => null_mut(),
-        Some((a, d)) => {
-            digest.copy_from_slice(&d);
-            Box::into_raw(Box::new(Authentication(a)))
-        }
+#[export_name = "scal3_subscriber_authenticate"]
+pub extern "C" fn authenticate(buffer: *mut Buffer) -> *mut Authentication {
+    let Some(buffer) = (unsafe { buffer.as_mut() }) else {
+        return null_mut();
+    };
+    let (authentication, response) = match buffer.deserialize::<AuthenticateRequest>() {
+        Ok(request) => match request.handle() {
+            None => (null_mut(), AuthenticateResponse::error("missing value")),
+            Some(Some((a, d))) => (
+                Box::into_raw(Box::new(Authentication(a))),
+                AuthenticateResponse::digest(d),
+            ),
+            Some(None) => (null_mut(), AuthenticateResponse::error("invalid input")),
+        },
+        Err(_) => (null_mut(), AuthenticateResponse::error("schema mismatch")),
+    };
+    match buffer.serialize(response) {
+        Ok(_) => authentication,
+        Err(_) => null_mut(),
     }
 }
 
 /// Finishes [Authentication] using a [Proof].
-#[no_mangle]
-pub extern "C" fn pass(
-    authentication: *mut Authentication,
-    proof: &Proof,
-    key: &mut Key,
-    pass: &mut Pass,
-) -> bool {
+#[export_name = "scal3_subscriber_pass"]
+pub extern "C" fn pass(authentication: *mut Authentication, buffer: *mut Buffer) -> Status {
     let authentication = unsafe { Box::from_raw(authentication) };
-    match program::subscriber::pass(authentication.0, proof) {
-        None => false,
-        Some((k, p)) => {
-            key.copy_from_slice(&k);
-            pass.copy_from_slice(&p);
-            true
-        }
+    let Some(buffer) = (unsafe { buffer.as_mut() }) else {
+        return Status::InvalidPointer;
+    };
+    let response = match buffer.deserialize::<PassRequest>() {
+        Ok(request) => match request.handle(authentication.0) {
+            None => PassResponse::error("missing value"),
+            Some(Some((k, p))) => PassResponse::result(Attempt {
+                sender: Some(k),
+                pass: Some(p),
+            }),
+            Some(None) => PassResponse::error("invalid input"),
+        },
+        Err(_) => PassResponse::error("schema mismatch"),
+    };
+    match buffer.serialize(response) {
+        Ok(_) => Status::Done,
+        Err(_) => Status::SerializationError,
     }
 }
