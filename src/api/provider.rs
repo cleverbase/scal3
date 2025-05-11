@@ -1,4 +1,4 @@
-//! Central system provider operating under sole control of subscribers.
+//! Central system provider operating under sole control of [subscriber]s.
 
 use crate::api::*;
 use crate::buffer::Buffer;
@@ -11,7 +11,7 @@ use crate::buffer::Buffer;
 #[no_mangle]
 pub extern "C" fn accept(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::InvalidPointer;
+        return Status::BufferError;
     };
     let response = match buffer.deserialize::<ProviderState>() {
         Ok(request) => match request.handle() {
@@ -22,8 +22,8 @@ pub extern "C" fn accept(buffer: *mut Buffer) -> Status {
         Err(_) => AcceptResponse::error("schema mismatch"),
     };
     match buffer.serialize(response) {
-        Ok(_) => Status::Done,
-        Err(_) => Status::SerializationError,
+        Ok(_) => Status::Ready,
+        Err(_) => Status::BufferError,
     }
 }
 
@@ -31,7 +31,7 @@ pub extern "C" fn accept(buffer: *mut Buffer) -> Status {
 #[no_mangle]
 pub extern "C" fn challenge(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::InvalidPointer;
+        return Status::BufferError;
     };
     let response = match buffer.deserialize::<ChallengeRequest>() {
         Ok(request) => match request.handle() {
@@ -41,8 +41,8 @@ pub extern "C" fn challenge(buffer: *mut Buffer) -> Status {
         Err(_) => ChallengeResponse::error("schema mismatch"),
     };
     match buffer.serialize(response) {
-        Ok(_) => Status::Done,
-        Err(_) => Status::SerializationError,
+        Ok(_) => Status::Ready,
+        Err(_) => Status::BufferError,
     }
 }
 
@@ -50,7 +50,7 @@ pub extern "C" fn challenge(buffer: *mut Buffer) -> Status {
 #[export_name = "scal3_provider_prove"]
 pub extern "C" fn prove(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::InvalidPointer;
+        return Status::BufferError;
     };
     let response = match buffer.deserialize::<ProveRequest>() {
         Ok(request) => match request.handle() {
@@ -65,7 +65,7 @@ pub extern "C" fn prove(buffer: *mut Buffer) -> Status {
         Err(_) => ProveResponse::error("schema mismatch"),
     };
     match buffer.serialize(response) {
-        Ok(_) => Status::Done,
-        Err(_) => Status::SerializationError,
+        Ok(_) => Status::Ready,
+        Err(_) => Status::BufferError,
     }
 }

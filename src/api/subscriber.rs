@@ -1,17 +1,17 @@
-//! User with a device under full control, subscribing to provider services.
+//! User with a device under full control, subscribing to [provider] services.
 
 use crate::api::*;
 use crate::domain;
 use std::ptr::null_mut;
 
-/// Process handle for passing a [Challenge].
+/// Process handle for passing a challenge.
 pub struct Authentication(domain::Authentication);
 
-/// Enrolls the subscriber by providing a mask, creating a verifier.
+/// Enrolls the [subscriber] by providing a mask, creating a verifier.
 #[no_mangle]
 pub extern "C" fn register(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::InvalidPointer;
+        return Status::BufferError;
     };
     let response = match buffer.deserialize::<SubscriberState>() {
         Ok(request) => match request.handle() {
@@ -22,12 +22,12 @@ pub extern "C" fn register(buffer: *mut Buffer) -> Status {
         Err(_) => RegisterResponse::error("schema mismatch"),
     };
     match buffer.serialize(response) {
-        Ok(_) => Status::Done,
-        Err(_) => Status::SerializationError,
+        Ok(_) => Status::Ready,
+        Err(_) => Status::BufferError,
     }
 }
 
-/// Starts passing a [Challenge].
+/// Starts passing a challenge.
 #[export_name = "scal3_subscriber_authenticate"]
 pub extern "C" fn authenticate(buffer: *mut Buffer) -> *mut Authentication {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
@@ -50,12 +50,12 @@ pub extern "C" fn authenticate(buffer: *mut Buffer) -> *mut Authentication {
     }
 }
 
-/// Finishes [Authentication] using a [Proof].
+/// Finishes [Authentication] using a proof.
 #[export_name = "scal3_subscriber_pass"]
 pub extern "C" fn pass(authentication: *mut Authentication, buffer: *mut Buffer) -> Status {
     let authentication = unsafe { Box::from_raw(authentication) };
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::InvalidPointer;
+        return Status::BufferError;
     };
     let response = match buffer.deserialize::<PassRequest>() {
         Ok(request) => match request.handle(authentication.0) {
@@ -69,7 +69,7 @@ pub extern "C" fn pass(authentication: *mut Authentication, buffer: *mut Buffer)
         Err(_) => PassResponse::error("schema mismatch"),
     };
     match buffer.serialize(response) {
-        Ok(_) => Status::Done,
-        Err(_) => Status::SerializationError,
+        Ok(_) => Status::Ready,
+        Err(_) => Status::BufferError,
     }
 }

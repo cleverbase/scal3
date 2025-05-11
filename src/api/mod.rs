@@ -99,7 +99,7 @@ struct Registration {
 
 #[derive(Serialize, Deserialize)]
 struct RegisterResponse {
-    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     registration: Option<Registration>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -198,8 +198,8 @@ struct Attempt {
 
 #[derive(Serialize, Deserialize)]
 struct PassResponse {
-    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
-    result: Option<Attempt>,
+    #[serde(flatten)]
+    attempt: Option<Attempt>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -207,13 +207,13 @@ struct PassResponse {
 impl PassResponse {
     fn result(value: Attempt) -> Self {
         Self {
-            result: Some(value),
+            attempt: Some(value),
             error: None,
         }
     }
     fn error(value: &str) -> Self {
         Self {
-            result: None,
+            attempt: None,
             error: Some(value.to_string()),
         }
     }
@@ -340,7 +340,7 @@ impl ProveRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ProveResponse {
-    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     result: Option<Transcript>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -433,31 +433,33 @@ impl VerifyResponse {
     }
 }
 
+/// Request handling status.
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum Status {
-    InvalidPointer = -1,
-    SerializationError = -2,
-    Done = 0,
+    /// An error occurred when accessing the [buffer].
+    BufferError = -1,
+    /// The response is ready to read from the [buffer].
+    Ready = 0,
 }
 
 /// Verifies evidence that the identified [subscriber] passed the digest.
 #[export_name = "scal3_verify"]
 pub extern "C" fn verify(buffer: *mut Buffer) -> Status {
     let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::InvalidPointer;
+        return Status::BufferError;
     };
     let response = match buffer.deserialize::<VerifyRequest>() {
         Ok(request) => match request.handle() {
             None => VerifyResponse::error("missing value"),
             Some(Ok(_)) => VerifyResponse::result("verified"),
-            Some(Err(_)) => VerifyResponse::result("falsified"),
+            Some(Err(_)) => VerifyResponse::result("rejected"),
         },
         Err(_) => VerifyResponse::error("schema mismatch"),
     };
     match buffer.serialize(response) {
-        Ok(_) => Status::Done,
-        Err(_) => Status::SerializationError,
+        Ok(_) => Status::Ready,
+        Err(_) => Status::BufferError,
     }
 }
 
@@ -538,7 +540,7 @@ mod test {
             randomness: Some(randomness()),
             provider: Some(pk_provider),
         })?;
-        assert_eq!(subscriber::register(&mut buffer), Status::Done);
+        assert_eq!(subscriber::register(&mut buffer), Status::Ready);
         let response = buffer.deserialize::<RegisterResponse>()?;
         assert!(response.registration.is_some());
         let registration = response.registration.unwrap();
@@ -553,7 +555,7 @@ mod test {
             credential: credential.clone(),
         };
         buffer.serialize(provider_state.clone())?;
-        assert_eq!(provider::accept(&mut buffer), Status::Done);
+        assert_eq!(provider::accept(&mut buffer), Status::Ready);
         let response = buffer.deserialize::<AcceptResponse>()?;
         assert_eq!(response.result, Some("accepted".to_string()));
 
@@ -586,7 +588,7 @@ mod test {
         buffer.serialize(PassRequest { proof: Some(sign_prehash(&sk_subscriber, &to_sign)) })?;
         let _result = subscriber::pass(authentication, &mut buffer);
         let response = buffer.deserialize::<PassResponse>()?;
-        let attempt = response.result.unwrap();
+        let attempt = response.attempt.unwrap();
 
         buffer.serialize(ProveRequest {
             randomness: Some(prf(&k_provider, challenge_data)),
@@ -607,7 +609,7 @@ mod test {
             transcript,
         })?;
         let result = verify(&mut buffer);
-        assert_eq!(result, Status::Done);
+        assert_eq!(result, Status::Ready);
         let response = buffer.deserialize::<VerifyResponse>()?;
         assert_eq!(response.error, None);
         assert_eq!(response.result, Some("verified".to_string()));

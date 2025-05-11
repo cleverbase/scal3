@@ -1,3 +1,5 @@
+//! Buffer for CBOR-encoded request and response data.
+
 use minicbor::encode::write::EndOfSlice;
 use minicbor_serde::error::{DecodeError, EncodeError};
 
@@ -6,14 +8,14 @@ const BUFFER_SIZE: usize = 1024;
 pub struct Buffer(pub [u8; BUFFER_SIZE]);
 
 impl Buffer {
-    pub(crate) fn new() -> Self {
-        Self([0u8; BUFFER_SIZE])   
+    pub fn new() -> Self {
+        Self([0u8; BUFFER_SIZE])
     }
-    
+
     pub(crate) fn deserialize<'de, T>(&'de self) -> Result<T, DecodeError> where T : serde::Deserialize<'de> {
         minicbor_serde::from_slice(self.0.as_slice())
     }
-    
+
     pub(crate) fn serialize<T>(&mut self, val: T) -> Result<(), EncodeError<EndOfSlice>> where T : serde::Serialize {
         val.serialize(&mut minicbor_serde::Serializer::new(self.0.as_mut_slice()))
     }
