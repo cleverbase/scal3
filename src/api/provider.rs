@@ -3,7 +3,11 @@
 use crate::api::*;
 use crate::program;
 
-/// Upon registration, checks integrity of a [Verifier].
+struct AcceptRequest {
+    interaction: Interaction // has too much info: also device pk. would be good to verify though
+}
+
+/// Upon registration, checks the integrity of a verifier.
 #[no_mangle]
 pub extern "C" fn accept(provider: &Key, verifier_secret: &Secret, verifier: &Verifier) -> bool {
     program::provider::accept(provider, verifier_secret, verifier).is_ok()
@@ -20,48 +24,101 @@ pub extern "C" fn challenge(randomness: *const Randomness, challenge: *mut Chall
     challenge.copy_from_slice(&program::provider::challenge(randomness));
 }
 
-/// Finishes authentication by creating evidence that [Pass] is correct.
-#[no_mangle]
-pub extern "C" fn prove(
-    randomness: *const Randomness,
-    provider: *const Key,
-    verifier_secret: *const Secret,
-    verifier: *const Verifier,
-    pk_device: *const Key,
-    client_data_hash: *const Digest,
-    pass_secret: *const Secret,
-    pass: *const Pass,
-    authenticator: *mut Authenticator,
-    proof: *mut Proof,
-    client: *mut Client,
-) -> bool {
-    let randomness = unsafe { &*randomness };
-    let provider = unsafe { &*provider };
-    let verifier_secret = unsafe { &*verifier_secret };
-    let verifier = unsafe { &*verifier };
-    let pk_device = unsafe { &*pk_device };
-    let client_data_hash = unsafe { &*client_data_hash };
-    let pass_secret = unsafe { &*pass_secret };
-    let pass = unsafe { &*pass };
-    let authenticator = unsafe { &mut *authenticator };
-    let proof = unsafe { &mut *proof };
-    let client = unsafe { &mut *client };
-    match program::provider::prove(
-        randomness,
-        provider,
-        verifier_secret,
-        verifier,
-        pk_device,
-        client_data_hash,
-        pass_secret,
-        pass
-    ) {
-        None => false,
-        Some((a, p, c)) => {
-            authenticator.copy_from_slice(&a);
-            proof.copy_from_slice(&p);
-            client.copy_from_slice(&c);
-            true
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Interaction {
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pub(crate) provider: Option<Key>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pub(crate) secret: Option<Secret>,
+    #[serde(flatten)]
+    pub(crate) credential: Credential,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ProveRequest {
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pub(crate) randomness: Option<Randomness>,
+    #[serde(flatten)]
+    pub(crate) interaction: Interaction,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pub(crate) client_data_hash: Option<Digest>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pub(crate) pass_secret: Option<Secret>,
+    #[serde(with = "serde_bytes", default = "Option::default")]
+    pub(crate) pass: Option<Pass>,
+}
+
+impl ProveRequest {
+    fn handle(&self) -> Option<Option<(Authenticator, Proof, Client)>> {
+        Some(program::provider::prove(
+            &self.randomness?,
+            &self.interaction.provider?,
+            &self.interaction.secret?,
+            &self.interaction.credential.verifier?,
+            &self.interaction.credential.device?,
+            &self.client_data_hash?,
+            &self.pass_secret?,
+            &self.pass?,
+        ))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct ProveResponse {
+    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    pub(crate) result: Option<Transcript>,
+    #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<String>,
+}
+
+impl ProveResponse {
+    fn failure() -> Self {
+        Self {
+            result: None,
+            error: None,
         }
+    }
+
+    fn result(value: Transcript) -> Self {
+        Self {
+            result: Some(value),
+            error: None,
+        }
+    }
+
+    fn error(value: &str) -> Self {
+        Self {
+            result: None,
+            error: Some(value.to_string()),
+        }
+    }
+}
+
+/// Finishes authentication by creating evidence that the pass is correct.
+#[export_name = "scal3_provider_prove"]
+pub unsafe extern "C" fn prove(req_buf: *const u8, res_buf: *mut u8) -> VerifyStatus {
+    if req_buf.is_null() || res_buf.is_null() {
+        return VerifyStatus::InvalidPointer;
+    }
+    let request = std::slice::from_raw_parts(req_buf, buffer::size());
+    let response = std::slice::from_raw_parts_mut(res_buf, buffer::size());
+    let mut serializer = minicbor_serde::Serializer::new(response);
+    let mut deserializer = minicbor_serde::Deserializer::new(request);
+    let request = ProveRequest::deserialize(&mut deserializer);
+    let response = match request {
+        Ok(r) => match r.handle() {
+            None => ProveResponse::error("missing value"),
+            Some(Some((a, p, c))) => ProveResponse::result(Transcript {
+                authenticator: Some(a),
+                proof: Some(p),
+                client: Some(c),
+            }),
+            Some(None) => ProveResponse::failure(),
+        },
+        Err(_) => ProveResponse::error("schema mismatch"),
+    };
+    match response.serialize(&mut serializer) {
+        Ok(_) => VerifyStatus::Done,
+        Err(_) => VerifyStatus::SerializationError,
     }
 }

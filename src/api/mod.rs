@@ -66,7 +66,7 @@ pub type Digest = [u8; 32];
 
 // fn decode_verify_request(bytes: &[u8]) -> Result<>
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Credential {
     #[serde(with = "serde_bytes", default = "Option::default")]
     verifier: Option<Verifier>,
@@ -74,7 +74,7 @@ struct Credential {
     device: Option<Key>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Transcript {
     #[serde(with = "serde_bytes", default = "Option::default")]
     authenticator: Option<Authenticator>,
@@ -165,6 +165,7 @@ pub unsafe extern "C" fn verify(req_buf: *const u8, res_buf: *mut u8) -> VerifyS
 #[cfg(test)]
 mod test {
     use crate::api::*;
+    use crate::provider::{Interaction, ProveRequest, ProveResponse};
     use hmac::digest::{crypto_common, KeyInit};
     use hmac::{Hmac, Mac};
     use p256::elliptic_curve::sec1::ToEncodedPoint;
@@ -214,8 +215,6 @@ mod test {
         let mut proof = [0u8; size_of::<Proof>()];
         let mut sender = [0u8; size_of::<Key>()];
         let mut pass = [0u8; size_of::<Pass>()];
-        let mut authenticator = [0u8; size_of::<Authenticator>()];
-        let mut client = [0u8; size_of::<Client>()];
 
         // Setup
 
@@ -278,19 +277,6 @@ mod test {
         ));
 
         randomness.copy_from_slice(&prf(&k_provider, challenge_data));
-        assert!(provider::prove(
-            &randomness,
-            &pk_provider,
-            &ecdh(&sk_provider, &subscriber),
-            &verifier,
-            &pk_subscriber,
-            &client_data_hash,
-            &ecdh(&sk_provider, &sender),
-            &pass,
-            &mut authenticator,
-            &mut proof,
-            &mut client
-        ));
 
         let req_buf = buffer::allocate();
         let res_buf = buffer::allocate();
@@ -302,17 +288,43 @@ mod test {
             slice::from_raw_parts(res_buf, buffer::size())
         });
 
+        let credential = Credential {
+            verifier: Some(verifier),
+            device: Some(pk_subscriber),
+        };
+        let interaction = Interaction {
+            provider: Some(pk_provider),
+            secret: Some(ecdh(&sk_provider, &subscriber)),
+            credential: credential.clone(),
+        };
+
+        ProveRequest {
+            randomness: Some(randomness),
+            interaction,
+            client_data_hash: Some(client_data_hash),
+            pass_secret: Some(ecdh(&sk_provider, &sender)),
+            pass: Some(pass),
+        }
+        .serialize(&mut serializer)
+        .unwrap();
+        let result = unsafe { provider::prove(req_buf, res_buf) };
+        assert_eq!(result, VerifyStatus::Done);
+        let response = ProveResponse::deserialize(&mut deserializer).unwrap();
+        assert!(response.result.is_some());
+        assert!(response.error.is_none());
+        let transcript = response.result.unwrap();
+
+        let mut serializer = minicbor_serde::Serializer::new(unsafe {
+            slice::from_raw_parts_mut(req_buf, buffer::size())
+        });
+        let mut deserializer = minicbor_serde::Deserializer::new(unsafe {
+            slice::from_raw_parts(res_buf, buffer::size())
+        });
+        
         VerifyRequest {
-            credential: Credential {
-                verifier: Some(verifier),
-                device: Some(pk_subscriber),
-            },
+            credential,
             hash: Some(client_data_hash),
-            transcript: Transcript {
-                authenticator: Some(authenticator),
-                proof: Some(proof),
-                client: Some(client),
-            },
+            transcript,
         }
         .serialize(&mut serializer)
         .unwrap();
