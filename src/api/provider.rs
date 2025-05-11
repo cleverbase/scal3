@@ -1,6 +1,7 @@
 //! Central system provider operating under sole control of subscribers.
 
 use crate::api::*;
+use crate::buffer::Buffer;
 use crate::program;
 
 struct AcceptRequest {
@@ -96,12 +97,12 @@ impl ProveResponse {
 
 /// Finishes authentication by creating evidence that the pass is correct.
 #[export_name = "scal3_provider_prove"]
-pub unsafe extern "C" fn prove(req_buf: *const u8, res_buf: *mut u8) -> VerifyStatus {
+pub unsafe extern "C" fn prove(req_buf: *mut Buffer, res_buf: *mut Buffer) -> VerifyStatus {
     if req_buf.is_null() || res_buf.is_null() {
         return VerifyStatus::InvalidPointer;
     }
-    let request = std::slice::from_raw_parts(req_buf, buffer::size());
-    let response = std::slice::from_raw_parts_mut(res_buf, buffer::size());
+    let request = unsafe { &mut *req_buf }.0.as_mut_slice();
+    let response = unsafe { &mut *res_buf }.0.as_mut_slice();
     let mut serializer = minicbor_serde::Serializer::new(response);
     let mut deserializer = minicbor_serde::Deserializer::new(request);
     let request = ProveRequest::deserialize(&mut deserializer);

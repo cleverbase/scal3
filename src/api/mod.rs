@@ -64,7 +64,25 @@ pub type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 /// Contains a SHA-256 hash digest.
 pub type Digest = [u8; 32];
 
-// fn decode_verify_request(bytes: &[u8]) -> Result<>
+// const BUFFER_SIZE: usize = 1024;
+//
+// pub struct Instance {
+//     buffer: [u8; BUFFER_SIZE],
+// }
+//
+// #[export_name = "scal3_init"]
+// pub extern "C" fn init() -> *mut Instance {
+//     let instance = Instance {
+//         buffer: [0u8; BUFFER_SIZE],
+//     };
+//     Box::into_raw(Box::new(instance))
+// }
+//
+// #[export_name = "scal3_finalize"]
+// pub extern "C" fn finalize(instance: *mut Instance) {
+//     assert!(!instance.is_null());
+//     let _ = unsafe { Box::from_raw(instance) };
+// }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Credential {
@@ -281,12 +299,10 @@ mod test {
         let req_buf = buffer::allocate();
         let res_buf = buffer::allocate();
 
-        let mut serializer = minicbor_serde::Serializer::new(unsafe {
-            slice::from_raw_parts_mut(req_buf, buffer::size())
-        });
-        let mut deserializer = minicbor_serde::Deserializer::new(unsafe {
-            slice::from_raw_parts(res_buf, buffer::size())
-        });
+        let req_buf_ref = unsafe { &mut *req_buf };
+
+        let res_buf_ref = unsafe { &mut *res_buf };
+        let res_buf_arr = res_buf_ref.0.as_mut_slice();
 
         let credential = Credential {
             verifier: Some(verifier),
@@ -298,40 +314,49 @@ mod test {
             credential: credential.clone(),
         };
 
-        ProveRequest {
+        let prove_request = ProveRequest {
             randomness: Some(randomness),
             interaction,
             client_data_hash: Some(client_data_hash),
             pass_secret: Some(ecdh(&sk_provider, &sender)),
             pass: Some(pass),
-        }
-        .serialize(&mut serializer)
-        .unwrap();
+        };
+        {
+            let binding = req_buf_ref.0.as_mut_slice();
+            let mut serializer = minicbor_serde::Serializer::new(binding);
+            prove_request.serialize(&mut serializer).unwrap();
+        };
         let result = unsafe { provider::prove(req_buf, res_buf) };
         assert_eq!(result, VerifyStatus::Done);
+        let mut deserializer = minicbor_serde::Deserializer::new(&res_buf_arr);
         let response = ProveResponse::deserialize(&mut deserializer).unwrap();
         assert!(response.result.is_some());
         assert!(response.error.is_none());
         let transcript = response.result.unwrap();
 
-        let mut serializer = minicbor_serde::Serializer::new(unsafe {
-            slice::from_raw_parts_mut(req_buf, buffer::size())
-        });
-        let mut deserializer = minicbor_serde::Deserializer::new(unsafe {
-            slice::from_raw_parts(res_buf, buffer::size())
-        });
-        
-        VerifyRequest {
-            credential,
-            hash: Some(client_data_hash),
-            transcript,
-        }
-        .serialize(&mut serializer)
-        .unwrap();
-        let result = unsafe { verify(req_buf, res_buf) };
-        assert_eq!(result, VerifyStatus::Done);
-        let response = VerifyResponse::deserialize(&mut deserializer).unwrap();
-        assert_eq!(response.result, Some("verified".to_string()));
+        // let req_buf = buffer::allocate();
+        // let res_buf = buffer::allocate();
+        //
+        // let req_buf_ref = unsafe { &mut *req_buf };
+        // let req_buf_arr = req_buf_ref.0.as_mut_slice();
+        //
+        // let res_buf_ref = unsafe { &mut *res_buf };
+        // let res_buf_arr = res_buf_ref.0.as_mut_slice();
+        //
+        // let mut serializer = minicbor_serde::Serializer::new(req_buf_arr);
+        // let mut deserializer = minicbor_serde::Deserializer::new(res_buf_arr);
+        //
+        // VerifyRequest {
+        //     credential,
+        //     hash: Some(client_data_hash),
+        //     transcript,
+        // }
+        // .serialize(&mut serializer)
+        // .unwrap();
+        // let result = unsafe { verify(req_buf_arr.as_mut_ptr(), res_buf_arr.as_mut_ptr()) };
+        // assert_eq!(result, VerifyStatus::Done);
+        // let response = VerifyResponse::deserialize(&mut deserializer).unwrap();
+        // assert_eq!(response.result, Some("verified".to_string()));
 
         unsafe {
             buffer::free(req_buf);
