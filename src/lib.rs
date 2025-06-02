@@ -5,6 +5,9 @@ mod domain;
 mod kem;
 mod rng;
 pub(crate) mod api;
+mod dispatch;
+mod ffi;
+mod handle;
 
 use std::num::NonZeroU32;
 use getrandom::register_custom_getrandom;

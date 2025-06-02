@@ -4,6 +4,7 @@ pub mod subscriber;
 
 use crate::buffer::Buffer;
 use crate::domain::Authentication;
+use crate::handle::insert_authentication;
 use crate::{domain, program};
 use serde::{Deserialize, Serialize};
 
@@ -66,8 +67,34 @@ pub(crate) type Pass = [u8; 33 + 33 + 64 + 33 + 64 + 33 + 32 + 16];
 /// Contains a SHA-256 hash digest.
 pub(crate) type Digest = [u8; 32];
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Error {
+    BadRequest,
+    MissingValue,
+    InvalidInput,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ErrorResponse {
+    pub(crate) error: Error,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum Response {
+    Challenge(ChallengeResponse),
+    Register(Option<Registration>),
+    Accept(Acceptance),
+    Authenticate(AuthenticateResponse2),
+    Pass(Attempt),
+    Prove(Option<Transcript>),
+    Verify(Verification),
+    Error(ErrorResponse),
+}
+
 #[derive(Serialize, Deserialize)]
-struct SubscriberState {
+pub(crate) struct SubscriberState {
     #[serde(with = "serde_bytes", default = "Option::default")]
     mask: Option<Mask>,
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -77,20 +104,20 @@ struct SubscriberState {
 }
 
 impl SubscriberState {
-    fn handle(&self) -> Option<Option<Registration>> {
-        Some(program::subscriber::register(
-            &self.mask?,
-            &self.randomness?,
-            &self.provider?,
-        ).map(|(key, verifier)| Registration {
-            subscriber: Some(key),
-            verifier: Some(verifier)
-        }))
+    pub(crate) fn handle(&self) -> Option<Option<Registration>> {
+        Some(
+            program::subscriber::register(&self.mask?, &self.randomness?, &self.provider?).map(
+                |(key, verifier)| Registration {
+                    subscriber: Some(key),
+                    verifier: Some(verifier),
+                },
+            ),
+        )
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct Registration {
+pub(crate) struct Registration {
     #[serde(with = "serde_bytes", default = "Option::default")]
     subscriber: Option<Key>,
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -98,7 +125,7 @@ struct Registration {
 }
 
 #[derive(Serialize, Deserialize)]
-struct RegisterResponse {
+pub(crate) struct RegisterResponse {
     #[serde(flatten)]
     registration: Option<Registration>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
@@ -106,7 +133,7 @@ struct RegisterResponse {
 }
 
 impl RegisterResponse {
-    fn registration(value: Registration) -> Self {
+    pub(crate) fn registration(value: Registration) -> Self {
         Self {
             registration: Some(value),
             error: None,
@@ -122,7 +149,7 @@ impl RegisterResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-struct AuthenticateRequest {
+pub(crate) struct AuthenticateRequest {
     #[serde(flatten)]
     state: SubscriberState,
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -135,8 +162,15 @@ struct AuthenticateRequest {
     hash: Option<Digest>,
 }
 
+#[derive(Serialize)]
+pub(crate) struct AuthenticateResponse2 {
+    #[serde(with = "serde_bytes")]
+    digest: Digest,
+    authentication: u64,
+}
+
 impl AuthenticateRequest {
-    fn handle(&self) -> Option<Option<(Authentication, Digest)>> {
+    pub(crate) fn handle(&self) -> Option<Option<(Authentication, Digest)>> {
         Some(program::subscriber::authenticate(
             &self.state.mask?,
             &self.state.randomness?,
@@ -147,10 +181,24 @@ impl AuthenticateRequest {
             &self.hash?,
         ))
     }
+
+    pub(crate) fn handle2(&self) -> Option<AuthenticateResponse2> {
+        match self.handle() {
+            None => None,
+            Some(None) => None,
+            Some(Some((authentication, digest))) => {
+                let authentication_id = insert_authentication(authentication);
+                Some(AuthenticateResponse2 {
+                    digest,
+                    authentication: authentication_id,
+                })
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
-struct AuthenticateResponse {
+pub(crate) struct AuthenticateResponse {
     #[serde(
         with = "serde_bytes",
         default = "Option::default",
@@ -177,23 +225,25 @@ impl AuthenticateResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-struct PassRequest {
+pub(crate) struct PassRequest {
     #[serde(with = "serde_bytes", default = "Option::default")]
     proof: Option<Proof>,
+    #[serde(default = "Option::default")]
+    pub(crate) authentication: Option<u64>,
 }
 
 impl PassRequest {
-    fn handle(&self, authentication: Authentication) -> Option<Option<(Key, Pass)>> {
+    pub(crate) fn handle(&self, authentication: Authentication) -> Option<Option<(Key, Pass)>> {
         Some(program::subscriber::pass(authentication, &self.proof?))
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct Attempt {
+pub(crate) struct Attempt {
     #[serde(with = "serde_bytes", default = "Option::default")]
-    sender: Option<Key>,
+    pub(crate) sender: Option<Key>,
     #[serde(with = "serde_bytes", default = "Option::default")]
-    pass: Option<Pass>,
+    pub(crate) pass: Option<Pass>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -220,19 +270,19 @@ impl PassResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ChallengeRequest {
+pub(crate) struct ChallengeRequest {
     #[serde(with = "serde_bytes", default = "Option::default")]
     randomness: Option<Randomness>,
 }
 
 impl ChallengeRequest {
-    fn handle(&self) -> Option<Challenge> {
+    pub(crate) fn handle(&self) -> Option<Challenge> {
         Some(program::provider::challenge(&self.randomness?))
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct ChallengeResponse {
+pub(crate) struct ChallengeResponse {
     #[serde(
         with = "serde_bytes",
         default = "Option::default",
@@ -244,13 +294,13 @@ struct ChallengeResponse {
 }
 
 impl ChallengeResponse {
-    fn challenge(value: Challenge) -> Self {
+    pub(crate) fn challenge(value: Challenge) -> Self {
         Self {
             challenge: Some(value),
             error: None,
         }
     }
-    fn error(value: &str) -> Self {
+    pub(crate) fn error(value: &str) -> Self {
         Self {
             challenge: None,
             error: Some(value.to_string()),
@@ -259,7 +309,7 @@ impl ChallengeResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct ProviderState {
+pub(crate) struct ProviderState {
     #[serde(with = "serde_bytes", default = "Option::default")]
     provider: Option<Key>,
     #[serde(
@@ -273,13 +323,20 @@ struct ProviderState {
 }
 
 impl ProviderState {
-    fn handle(&self) -> Option<domain::Result> {
+    pub(crate) fn handle(&self) -> Option<domain::Result> {
         Some(program::provider::accept(
             &self.provider?,
             &self.secret?,
             &self.credential.verifier?,
         ))
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum Acceptance {
+    Accepted,
+    Rejected,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -306,7 +363,7 @@ impl AcceptResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ProveRequest {
+pub(crate) struct ProveRequest {
     #[serde(with = "serde_bytes", default = "Option::default")]
     randomness: Option<Randomness>,
     #[serde(flatten)]
@@ -324,7 +381,7 @@ struct ProveRequest {
 }
 
 impl ProveRequest {
-    fn handle(&self) -> Option<Option<(Authenticator, Proof, Client)>> {
+    pub(crate) fn handle(&self) -> Option<Option<(Authenticator, Proof, Client)>> {
         Some(program::provider::prove(
             &self.randomness?,
             &self.state.provider?,
@@ -378,17 +435,17 @@ struct Credential {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Transcript {
+pub(crate) struct Transcript {
     #[serde(with = "serde_bytes", default = "Option::default")]
-    authenticator: Option<Authenticator>,
+    pub(crate) authenticator: Option<Authenticator>,
     #[serde(with = "serde_bytes", default = "Option::default")]
-    proof: Option<Proof>,
+    pub(crate) proof: Option<Proof>,
     #[serde(with = "serde_bytes", default = "Option::default")]
-    client: Option<Client>,
+    pub(crate) client: Option<Client>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct VerifyRequest {
+pub(crate) struct VerifyRequest {
     #[serde(flatten)]
     credential: Credential,
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -398,7 +455,7 @@ struct VerifyRequest {
 }
 
 impl VerifyRequest {
-    fn handle(&self) -> Option<domain::Result> {
+    pub(crate) fn handle(&self) -> Option<domain::Result> {
         Some(program::verify(
             &self.credential.verifier?,
             &self.credential.device?,
@@ -408,6 +465,13 @@ impl VerifyRequest {
             &self.transcript.client?,
         ))
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum Verification {
+    Verified,
+    Rejected,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -585,7 +649,9 @@ mod test {
         let response = buffer.deserialize::<AuthenticateResponse>()?;
         let to_sign = response.digest.unwrap();
 
-        buffer.serialize(PassRequest { proof: Some(sign_prehash(&sk_subscriber, &to_sign)) })?;
+        buffer.serialize(PassRequest {
+            proof: Some(sign_prehash(&sk_subscriber, &to_sign)),
+        })?;
         let _result = subscriber::pass(authentication, &mut buffer);
         let response = buffer.deserialize::<PassResponse>()?;
         let attempt = response.attempt.unwrap();
