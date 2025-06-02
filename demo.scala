@@ -17,7 +17,7 @@ import java.security.{KeyFactory, KeyPairGenerator, MessageDigest, SecureRandom,
 import javax.crypto.{KeyAgreement, KeyGenerator, Mac, SecretKey}
 import scala.util.Try
 
-val libraryPath = "/home/sander/Code/scal3/target/release/libscal3.so"
+val libraryPath = "target/release/libscal3.so"
 
 object authentication:
   private object impl:
