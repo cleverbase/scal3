@@ -25,7 +25,6 @@ use sha2::{Digest, Sha256};
 use signature::{Signer, Verifier as SignatureVerifier};
 use std::collections::BTreeMap;
 use std::io::Write;
-use serde::{Deserialize, Serialize};
 
 pub(crate) struct Verifier {
     blinded_subscriber_share: p256::Scalar,

@@ -2,7 +2,7 @@
 name = "scal3"
 description = "Verify that systems operate under your sole control (prototype, patent pending)"
 license = "CC-BY-NC-4.0"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 repository = "https://github.com/cleverbase/scal3"
 authors = ["Sander Dijkhuis <sander.dijkhuis@cleverbase.com>"]
@@ -15,7 +15,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 getrandom = { version = "0.2.15", default-features = false, features = ["custom"] }
-#getrandom = { version = "0.2.15", default-features = false, features = ["js"] }
 frost-core = { version = "2.1.0", default-features = false, features = ["serialization"] }
 frost-p256 = { version = "2.1.0", default-features = false }
 p256 = { version = "0.13.2", default-features = false, features = ["ecdsa", "serde"] }
@@ -23,7 +22,6 @@ rand_chacha = { version = "0.9.0", default-features = false }
 sha2 = { version = "0.10.8", default-features = false }
 signature = { version = "2.2.0", default-features = false }
 hpke = { version = "0.13.0", default-features = false, features = ["p256"] }
-#wasm-bindgen = "0.2.100"
 minicbor = { version = "0.26.5", default-features = false, features = ["alloc", "derive"] }
 minicbor-serde = { version = "0.4.1", features = ["alloc"] }
 minicbor-derive = "0.16.2"

@@ -82,7 +82,7 @@ pub(crate) struct ErrorResponse {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-pub enum Response {
+pub(crate) enum Response {
     Challenge(ChallengeResponse),
     Register(Option<Registration>),
     Accept(Acceptance),

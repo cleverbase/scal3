@@ -1,6 +1,4 @@
-use std::ptr::null_mut;
 use crate::dispatch::dispatch;
-use crate::subscriber::Authentication;
 
 #[export_name = "scal3_process"]
 pub unsafe extern "C" fn process(

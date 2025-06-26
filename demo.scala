@@ -2,7 +2,7 @@
 //> using dependency "net.java.dev.jna:jna:5.17.0"
 //> using dependency "io.bullet::borer-core:1.16.1"
 //> using dependency "io.bullet::borer-derivation:1.16.1"
-//> using dependency "org.bouncycastle:bcprov-jdk18on:1.80"
+//> using dependency "org.bouncycastle:bcprov-jdk18on:1.81"
 
 import com.sun.jna.ptr.{IntByReference, PointerByReference}
 import com.sun.jna.{Library, Native, Pointer}
