@@ -650,6 +650,7 @@ mod test {
         let to_sign = response.digest.unwrap();
 
         buffer.serialize(PassRequest {
+            authentication: None,
             proof: Some(sign_prehash(&sk_subscriber, &to_sign)),
         })?;
         let _result = subscriber::pass(authentication, &mut buffer);
