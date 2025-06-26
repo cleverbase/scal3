@@ -149,14 +149,14 @@ In production, protect these with a hardware security module.
 Generate a P-256 ECDSA key pair and a PRF secret key for the subscriber.
 In production, protect these with a local secure area.
 
-Aborting upon failure, the [provider] and [subscriber] execute their
+Aborting upon failure, the provider and subscriber execute their
 assigned functions in this order:
 
-1. [subscriber]: derive a mask, obtain randomness,
-   [subscriber::register] and send a key with a verifier.
-2. [provider]: derive the secret and [provider::accept].
+1. subscriber: derive a mask, obtain randomness,
+   register and send a key with a verifier.
+2. provider: derive the secret and accept.
 
-In production, the [provider] would need to furthermore verify
+In production, the provider would need to furthermore verify
 possession of the device key and bind these, for example in
 a public key certificate.
 
@@ -164,22 +164,22 @@ a public key certificate.
 
 Aborting upon failure:
 
-1. [provider]: derive randomness, [provider::challenge] and send
+1. provider: derive randomness, challenge and send
    a challenge.
-2. [subscriber]: derive a mask, obtain randomness,
-   [subscriber::authenticate], create proof of possession,
-   [subscriber::pass] and send a pass.
-3. [provider]: [provider::prove] authentication and log
+2. subscriber: derive a mask, obtain randomness,
+   authenticate, create proof of possession,
+   pass and send the outcome.
+3. provider: prove authentication and log
    authenticator, proof and client verification data.
 
 ## Auditing
 
-The [subscriber] or any other party with access can [verify] the evidence
+The subscriber or any other party with access can verify the evidence
 consisting of authenticator, proof and client data.
 
 # Data model
 
-Requests and responses are encoded as CBOR ([RFC 8949](https://www.rfc-editor.org/rfc/rfc8949)) using a [buffer].
+Requests and responses are encoded as CBOR ([RFC 8949](https://www.rfc-editor.org/rfc/rfc8949)).
 Below are the specifications in CDDL ([RFC 8610](https://www.rfc-editor.org/rfc/rfc8610)).
 
 ```cddl

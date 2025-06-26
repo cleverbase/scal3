@@ -1,5 +1,6 @@
 use crate::dispatch::dispatch;
 
+/// Dispatches a CBOR-encoded request and outputs a CBOR-encoded response, which must be freed using [free].
 #[export_name = "scal3_process"]
 pub unsafe extern "C" fn process(
     input_ptr: *const u8,
@@ -16,6 +17,7 @@ pub unsafe extern "C" fn process(
     *output_len = len;
 }
 
+/// Frees a CBOR-encoded response allocated by [process].
 #[export_name = "scal3_free"]
 pub unsafe extern "C" fn free(ptr: *mut u8, size: usize) {
     drop(Vec::from_raw_parts(ptr, size, size));
