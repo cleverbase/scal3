@@ -35,16 +35,16 @@ jobs:
         run: |
           VERSION=${{ steps.extract.outputs.version }}
           PLATFORM=linux-x86_64
-          mkdir -p dist
-          cp target/release/scal3 dist/
-          cd dist
-          tar czf scal3-$VERSION-$PLATFORM.tar.gz scal3
+          mkdir -p target/dist
+          cp target/release/libscal3.so target/dist/libscal3-$VERSION-$PLATFORM.so
       - run: cargo publish --locked
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Create GitHub Release with uploaded binary
         run: |
-          gh release create "${{ steps.extract.outputs.version }}" dist/*.tar.gz \
+          VERSION=${{ steps.extract.outputs.version }}
+          PLATFORM=linux-x86_64
+          gh release create "${{ steps.extract.outputs.version }}" target/dist/libscal3-$VERSION-$PLATFORM.so \
             --title "Release ${{ steps.extract.outputs.version }}" \
             --verify-tag
         env:
