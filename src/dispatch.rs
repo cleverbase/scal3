@@ -18,7 +18,8 @@ pub enum Request {
     Verify(VerifyRequest),
 }
 
-pub(crate) fn dispatch(input: &[u8]) -> Vec<u8> {
+/// Dispatches a CBOR-encoded request and returns a CBOR-encoded response.
+pub fn dispatch(input: &[u8]) -> Vec<u8> {
     let response = match minicbor_serde::from_slice::<Request>(input) {
         Err(_) => Response::Error(ErrorResponse {
             error: Error::BadRequest,
@@ -49,7 +50,10 @@ pub(crate) fn dispatch(input: &[u8]) -> Vec<u8> {
             None => Response::Error(ErrorResponse {
                 error: Error::MissingValue,
             }),
-            Some(c) => Response::Challenge(crate::api::ChallengeResponse::challenge(c)),
+            Some(c) => Response::Challenge(crate::api::ChallengeResponse {
+                challenge: Some(c),
+                error: None,
+            }),
         },
         Ok(Request::Pass(args)) => match args.authentication {
             None => Response::Error(ErrorResponse {

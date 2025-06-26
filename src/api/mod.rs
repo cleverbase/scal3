@@ -1,8 +1,3 @@
-pub mod buffer;
-pub mod provider;
-pub mod subscriber;
-
-use crate::buffer::Buffer;
 use crate::domain::Authentication;
 use crate::handle::insert_authentication;
 use crate::{domain, program};
@@ -132,22 +127,6 @@ pub(crate) struct RegisterResponse {
     error: Option<String>,
 }
 
-impl RegisterResponse {
-    pub(crate) fn registration(value: Registration) -> Self {
-        Self {
-            registration: Some(value),
-            error: None,
-        }
-    }
-
-    fn error(value: &str) -> Self {
-        Self {
-            registration: None,
-            error: Some(value.to_string()),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub(crate) struct AuthenticateRequest {
     #[serde(flatten)]
@@ -209,21 +188,6 @@ pub(crate) struct AuthenticateResponse {
     error: Option<String>,
 }
 
-impl AuthenticateResponse {
-    fn digest(value: Digest) -> Self {
-        Self {
-            digest: Some(value),
-            error: None,
-        }
-    }
-    fn error(value: &str) -> Self {
-        Self {
-            digest: None,
-            error: Some(value.to_string()),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub(crate) struct PassRequest {
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -254,21 +218,6 @@ struct PassResponse {
     error: Option<String>,
 }
 
-impl PassResponse {
-    fn result(value: Attempt) -> Self {
-        Self {
-            attempt: Some(value),
-            error: None,
-        }
-    }
-    fn error(value: &str) -> Self {
-        Self {
-            attempt: None,
-            error: Some(value.to_string()),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ChallengeRequest {
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -288,24 +237,9 @@ pub(crate) struct ChallengeResponse {
         default = "Option::default",
         skip_serializing_if = "Option::is_none"
     )]
-    challenge: Option<Challenge>,
+    pub(crate) challenge: Option<Challenge>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
-impl ChallengeResponse {
-    pub(crate) fn challenge(value: Challenge) -> Self {
-        Self {
-            challenge: Some(value),
-            error: None,
-        }
-    }
-    pub(crate) fn error(value: &str) -> Self {
-        Self {
-            challenge: None,
-            error: Some(value.to_string()),
-        }
-    }
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -347,21 +281,6 @@ struct AcceptResponse {
     error: Option<String>,
 }
 
-impl AcceptResponse {
-    fn result(value: &str) -> Self {
-        Self {
-            result: Some(value.to_string()),
-            error: None,
-        }
-    }
-    fn error(value: &str) -> Self {
-        Self {
-            result: None,
-            error: Some(value.to_string()),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ProveRequest {
     #[serde(with = "serde_bytes", default = "Option::default")]
@@ -401,29 +320,6 @@ struct ProveResponse {
     result: Option<Transcript>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
     error: Option<String>,
-}
-
-impl ProveResponse {
-    fn failure() -> Self {
-        Self {
-            result: None,
-            error: None,
-        }
-    }
-
-    fn result(value: Transcript) -> Self {
-        Self {
-            result: Some(value),
-            error: None,
-        }
-    }
-
-    fn error(value: &str) -> Self {
-        Self {
-            result: None,
-            error: Some(value.to_string()),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -480,207 +376,4 @@ struct VerifyResponse {
     result: Option<String>,
     #[serde(default = "Option::default", skip_serializing_if = "Option::is_none")]
     error: Option<String>,
-}
-
-impl VerifyResponse {
-    fn result(value: &str) -> Self {
-        Self {
-            result: Some(value.to_string()),
-            error: None,
-        }
-    }
-    fn error(value: &str) -> Self {
-        Self {
-            result: None,
-            error: Some(value.to_string()),
-        }
-    }
-}
-
-/// Request handling status.
-#[repr(C)]
-#[derive(Debug, PartialEq)]
-pub enum Status {
-    /// An error occurred when accessing the [buffer].
-    BufferError = -1,
-    /// The response is ready to read from the [buffer].
-    Ready = 0,
-}
-
-/// Verifies evidence that the identified [subscriber] passed the digest.
-#[export_name = "scal3_verify"]
-pub extern "C" fn verify(buffer: *mut Buffer) -> Status {
-    let Some(buffer) = (unsafe { buffer.as_mut() }) else {
-        return Status::BufferError;
-    };
-    let response = match buffer.deserialize::<VerifyRequest>() {
-        Ok(request) => match request.handle() {
-            None => VerifyResponse::error("missing value"),
-            Some(Ok(_)) => VerifyResponse::result("verified"),
-            Some(Err(_)) => VerifyResponse::result("rejected"),
-        },
-        Err(_) => VerifyResponse::error("schema mismatch"),
-    };
-    match buffer.serialize(response) {
-        Ok(_) => Status::Ready,
-        Err(_) => Status::BufferError,
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::api::*;
-    use crate::buffer::Buffer;
-    use hmac::digest::{crypto_common, KeyInit};
-    use hmac::{Hmac, Mac};
-    use p256::elliptic_curve::sec1::ToEncodedPoint;
-    use p256::elliptic_curve::{PublicKey, SecretKey};
-    use p256::{NistP256, NonZeroScalar};
-    use sha2::{Digest as Sha2Digest, Sha256};
-    use signature::hazmat::PrehashSigner;
-    use signature::rand_core::{OsRng, RngCore};
-
-    #[test]
-    fn example() -> Result<(), Box<dyn std::error::Error>> {
-        fn sec1_compressed(pk: PublicKey<NistP256>) -> Key {
-            pk.to_encoded_point(true).as_ref().try_into().unwrap()
-        }
-
-        fn prf(k: &crypto_common::Key<Hmac<Sha256>>, msg: &[u8]) -> Randomness {
-            <Hmac<Sha256> as Mac>::new(k)
-                .chain_update(msg)
-                .finalize()
-                .into_bytes()
-                .try_into()
-                .unwrap()
-        }
-
-        fn randomness() -> Randomness {
-            let mut randomness = [0u8; 32];
-            OsRng.fill_bytes(&mut randomness);
-            randomness
-        }
-
-        fn sha256(msg: &[u8]) -> Digest {
-            let mut digest = [0u8; 32];
-            digest.copy_from_slice(Sha256::digest(msg).as_slice());
-            digest
-        }
-
-        fn ecdh(sk: &SecretKey<NistP256>, pk: &[u8; 33]) -> Secret {
-            let sk = NonZeroScalar::from_repr(sk.to_bytes()).unwrap();
-            let pk = p256::PublicKey::from_sec1_bytes(pk).unwrap();
-            let secret = p256::ecdh::diffie_hellman::<NistP256>(sk, pk.as_affine());
-            let bytes = secret.raw_secret_bytes().clone();
-            bytes.into()
-        }
-
-        fn sign_prehash(sk: &p256::ecdsa::SigningKey, hash: &Digest) -> Proof {
-            let mut proof = [0u8; size_of::<Proof>()];
-            let (signature, _) = sk.sign_prehash(hash).unwrap();
-            proof.copy_from_slice(&signature.to_bytes());
-            proof
-        }
-
-        let mut buffer = Buffer::new();
-
-        // Setup
-
-        // Provider keys would be protected by a hardware security module
-        let sk_provider = p256::SecretKey::random(&mut OsRng);
-        let pk_provider = sec1_compressed(sk_provider.public_key());
-        let k_provider = Hmac::<Sha256>::generate_key(&mut OsRng);
-
-        // Enrolment
-
-        // Subscriber keys would be protected by a local secure area, e.g. a StrongBox Keymaster
-        let sk_subscriber = p256::ecdsa::SigningKey::random(&mut OsRng);
-        let pk_subscriber = sec1_compressed(sk_subscriber.verifying_key().into());
-        let k_subscriber = Hmac::<Sha256>::generate_key(&mut OsRng);
-
-        // The subscriber derives a mask from a PIN, e.g. using a local hardware-backed PRF
-        buffer.serialize(SubscriberState {
-            mask: Some(prf(&k_subscriber, b"123456")),
-            randomness: Some(randomness()),
-            provider: Some(pk_provider),
-        })?;
-        assert_eq!(subscriber::register(&mut buffer), Status::Ready);
-        let response = buffer.deserialize::<RegisterResponse>()?;
-        assert!(response.registration.is_some());
-        let registration = response.registration.unwrap();
-
-        let credential = Credential {
-            verifier: registration.verifier.clone(),
-            device: Some(pk_subscriber),
-        };
-        let provider_state = ProviderState {
-            provider: Some(pk_provider),
-            secret: Some(ecdh(&sk_provider, &registration.subscriber.unwrap())),
-            credential: credential.clone(),
-        };
-        buffer.serialize(provider_state.clone())?;
-        assert_eq!(provider::accept(&mut buffer), Status::Ready);
-        let response = buffer.deserialize::<AcceptResponse>()?;
-        assert_eq!(response.result, Some("accepted".to_string()));
-
-        // Authentication
-
-        let challenge_data = b"ts=1743930934&nonce=000001";
-        buffer.serialize(ChallengeRequest {
-            randomness: Some(prf(&k_provider, challenge_data)),
-        })?;
-        let _result = provider::challenge(&mut buffer);
-        let response = buffer.deserialize::<ChallengeResponse>()?;
-
-        let client_data = b"{\"operation\":\"log-in\",\"session\":\"68c9eeeddfa5fb50\"}";
-        let state = SubscriberState {
-            mask: Some(prf(&k_subscriber, b"123456")),
-            randomness: Some(randomness()),
-            provider: Some(pk_provider),
-        };
-        buffer.serialize(AuthenticateRequest {
-            state,
-            subscriber: registration.subscriber.clone(),
-            credential: credential.clone(),
-            challenge: response.challenge,
-            hash: Some(sha256(client_data)),
-        })?;
-        let authentication = subscriber::authenticate(&mut buffer);
-        let response = buffer.deserialize::<AuthenticateResponse>()?;
-        let to_sign = response.digest.unwrap();
-
-        buffer.serialize(PassRequest {
-            authentication: None,
-            proof: Some(sign_prehash(&sk_subscriber, &to_sign)),
-        })?;
-        let _result = subscriber::pass(authentication, &mut buffer);
-        let response = buffer.deserialize::<PassResponse>()?;
-        let attempt = response.attempt.unwrap();
-
-        buffer.serialize(ProveRequest {
-            randomness: Some(prf(&k_provider, challenge_data)),
-            state: provider_state,
-            hash: Some(sha256(client_data)),
-            pass_secret: Some(ecdh(&sk_provider, &attempt.sender.unwrap())),
-            pass: Some(attempt.pass.unwrap()),
-        })?;
-
-        let _result = provider::prove(&mut buffer);
-
-        let response = buffer.deserialize::<ProveResponse>()?;
-        let transcript = response.result.unwrap();
-
-        buffer.serialize(VerifyRequest {
-            credential,
-            hash: Some(sha256(client_data)),
-            transcript,
-        })?;
-        let result = verify(&mut buffer);
-        assert_eq!(result, Status::Ready);
-        let response = buffer.deserialize::<VerifyResponse>()?;
-        assert_eq!(response.error, None);
-        assert_eq!(response.result, Some("verified".to_string()));
-
-        Ok(())
-    }
 }

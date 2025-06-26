@@ -222,59 +222,72 @@ ErrorResponse = {
     error: "missing value" / "invalid input" / "schema mismatch"
 }
 
-RegistrationRequest = { ? subscriberState }
+Request = { $$request }
+
+$$request //= (
+    type:        "register",
+    ? subscriberState
+)
 RegistrationResponse = ErrorResponse / {
     ? subscriber: Key,
     ? verifier:   Verifier,
 }
 
-AcceptRequest = { ? providerState }
+$$request //= (
+    type:        "accept",
+    ? providerState
+)
 AcceptResponse = ErrorResponse / {
     ? result: "accepted" / "rejected"
 }
 
-ChallengeRequest = {
+$$request //= (
+    type:        "challenge",
     ? randomness: Randomness,
-}
+)
 ChallengeResponse = ErrorResponse / {
     ? challenge:  Challenge,
 }
 
-AuthenticationRequest = {
+$$request //= (
+    type:        "authenticate",
     ? subscriberState,
     ? credential,
     ? subscriber: Key,
     ? challenge:  Challenge,
     ? hash:       Digest,
-}
+)
 AuthenticationResponse = ErrorResponse / {
     ? digest:     Digest,
 }
 
-PassRequest = {
+$$request //= (
+    type:        "pass",
     ? proof:      Proof,
-}
+)
 PassResponse = ErrorResponse / {
     ? sender:     Key,
     ? pass:       Pass,
 }
 
-ProveRequest = {
+$$request //= (
+    type:        "prove",
     ? providerState,
     ? randomness: Randomness,
     ? hash:       Digest,
     ? passSecret: Secret,
     ? pass:       Pass,
-}
+)
 ProveResponse = ErrorResponse / {
     ? transcript,
 }
 
-VerifyRequest = {
+$$request //= (
+    type:        "verify",
     ? credential,
     ? transcript,
     ? hash:       Digest,
-}
+)
 VerifyResponse = ErrorResponse / {
     ? result: "verified" / "rejected"
 }
