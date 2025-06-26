@@ -2,7 +2,8 @@
 target
 Cargo.lock
 
-.idea
+.idea/
+.vscode/
 
 *.aux
 *.bbl
@@ -14,3 +15,7 @@ Cargo.lock
 *.out
 *.pdf
 *.run.xml
+
+.bsp/
+.metals/
+.scala-build/
