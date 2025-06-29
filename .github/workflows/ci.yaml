@@ -45,7 +45,7 @@ jobs:
       - name: Archive and rename binary
         shell: bash
         run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
+          VERSION=${{ steps.extract.outputs.VERSION }}
           SUFFIX=${{ matrix.suffix }}
           EXT=${{ matrix.ext }}
           mkdir -p dist
