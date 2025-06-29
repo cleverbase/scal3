@@ -61,14 +61,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { name: bin-linux-x86_64, path: dist/ }
-      - uses: actions/download-artifact@v4
-        with: { name: bin-macos-arm64, path: dist/ }
       - name: Publish crate
         run: cargo publish --locked
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with: { name: bin-linux-x86_64, path: dist/ }
+      - uses: actions/download-artifact@v4
+        with: { name: bin-macos-arm64, path: dist/ }
       - name: Create GitHub Release with all binaries
         run: |
           VERSION=${GITHUB_REF##*/}
