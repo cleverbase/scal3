@@ -13,11 +13,15 @@ import org.bouncycastle.jce.interfaces.{ECPrivateKey, ECPublicKey}
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.jce.spec.ECPublicKeySpec
 
+import java.nio.file.Paths
 import java.security.{KeyFactory, KeyPairGenerator, MessageDigest, SecureRandom, Security, Signature}
 import javax.crypto.{KeyAgreement, KeyGenerator, Mac, SecretKey}
 import scala.util.Try
 
-val libraryPath = "target/release/libscal3.so"
+val libraryPath =
+  val os = System.getProperty("os.name").toLowerCase
+  val extension = if os.contains("mac") then ".dylib" else ".so"
+  s"target/release/libscal3$extension"
 
 object authentication:
   private object impl:
@@ -25,7 +29,9 @@ object authentication:
       def scal3_process(ip: Array[Byte], il: Int, op: PointerByReference, ol: IntByReference): Unit
       def scal3_free(ptr: Pointer, len: Int): Unit
 
-    private val library: AuthenticationLibrary = Native.load(libraryPath, classOf[AuthenticationLibrary])
+    private val library: AuthenticationLibrary =
+      val path = Paths.get(libraryPath).toFile.getAbsolutePath
+      Native.load(path, classOf[AuthenticationLibrary])
 
     given AdtEncodingStrategy = AdtEncodingStrategy.flat(typeMemberName = "type")
 
