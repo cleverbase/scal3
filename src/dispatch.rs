@@ -5,6 +5,7 @@ use crate::api::{
 use crate::handle::get_authentication;
 use crate::{Error, ErrorResponse, Response};
 use serde::Deserialize;
+use alloc::vec::Vec;
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]

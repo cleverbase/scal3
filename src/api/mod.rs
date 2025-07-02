@@ -2,6 +2,7 @@ use crate::domain::Authentication;
 use crate::handle::insert_authentication;
 use crate::{domain, program};
 use serde::{Deserialize, Serialize};
+use alloc::string::String;
 
 /// Enrolled verification data for the [subscriber].
 ///

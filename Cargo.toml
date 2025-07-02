@@ -2,7 +2,7 @@
 name = "scal3"
 description = "Verify that systems operate under your sole control (prototype, patent pending)"
 license = "CC-BY-NC-4.0"
-version = "0.3.5"
+version = "0.3.7"
 edition = "2021"
 repository = "https://github.com/cleverbase/scal3"
 authors = ["Sander Dijkhuis <sander.dijkhuis@cleverbase.com>"]
@@ -28,6 +28,7 @@ minicbor-derive = "0.16.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = "0.11.17"
 once_cell = "1.21.3"
+spin = { version = "0.9.8", default-features = false, features = ["mutex", "once", "spin_mutex"] }
 
 [dev-dependencies]
 hmac = "0.12.1"

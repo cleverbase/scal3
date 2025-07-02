@@ -3,7 +3,7 @@ use crate::domain;
 use crate::domain::{pk_recipient_from_bytes, shared_secret_from_bytes, Provider, Result, VerificationError};
 use hpke::Serializable;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
-use std::io::Write;
+
 
 pub(crate) fn accept(
     provider: &Key,
@@ -25,23 +25,17 @@ pub(crate) fn challenge(randomness: &Randomness) -> Challenge {
     };
     let (_, commitments) = provider.challenge();
     let mut challenge = [0u8; 66];
-    let mut buffer = &mut challenge[..];
-    buffer
-        .write_all(
-            p256::PublicKey::from_sec1_bytes(&commitments.hiding().serialize().unwrap())
-                .unwrap()
-                .to_encoded_point(true)
-                .as_bytes(),
-        )
-        .unwrap();
-    buffer
-        .write_all(
-            p256::PublicKey::from_sec1_bytes(&commitments.binding().serialize().unwrap())
-                .unwrap()
-                .to_encoded_point(true)
-                .as_bytes(),
-        )
-        .unwrap();
+    // 33 bytes for hiding commitment
+    let hiding_point = p256::PublicKey::from_sec1_bytes(&commitments.hiding().serialize().unwrap())
+        .unwrap()
+        .to_encoded_point(true);
+    challenge[0..33].copy_from_slice(hiding_point.as_bytes());
+    
+    // 33 bytes for binding commitment
+    let binding_point = p256::PublicKey::from_sec1_bytes(&commitments.binding().serialize().unwrap())
+        .unwrap()
+        .to_encoded_point(true);
+    challenge[33..66].copy_from_slice(binding_point.as_bytes());
     challenge
 }
 
@@ -81,7 +75,7 @@ mod tests {
     #[test]
     fn test_challenge() {
         let randomness = [1u8; 32];
-        let challenge = challenge(&randomness);
-        println!("{:x?}", challenge);
+        let _challenge = challenge(&randomness);
+        // Removed println! for no_std compatibility
     }
 }

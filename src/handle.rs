@@ -1,14 +1,23 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
+use alloc::collections::BTreeMap;
+use alloc::boxed::Box;
+use spin::Mutex;
 use crate::domain::Authentication;
-use once_cell::sync::Lazy;
+use spin::Once;
 
-static CONTEXTS: Lazy<Mutex<HashMap<u64, Box<Authentication>>>> = Lazy::new(Default::default);
-static NEXT_ID: Lazy<Mutex<u64>> = Lazy::new(|| Mutex::new(1));
+static CONTEXTS: Once<Mutex<BTreeMap<u64, Box<Authentication>>>> = Once::new();
+static NEXT_ID: Once<Mutex<u64>> = Once::new();
+
+fn get_contexts() -> &'static Mutex<BTreeMap<u64, Box<Authentication>>> {
+    CONTEXTS.call_once(|| Mutex::new(BTreeMap::new()))
+}
+
+fn get_next_id() -> &'static Mutex<u64> {
+    NEXT_ID.call_once(|| Mutex::new(1))
+}
 
 pub fn insert_authentication(authentication: Authentication) -> u64 {
-    let mut authentications = CONTEXTS.lock().unwrap();
-    let mut next = NEXT_ID.lock().unwrap();
+    let mut authentications = get_contexts().lock();
+    let mut next = get_next_id().lock();
     let id = *next;
     *next += 1;
     authentications.insert(id, Box::new(authentication));
@@ -16,5 +25,5 @@ pub fn insert_authentication(authentication: Authentication) -> u64 {
 }
 
 pub fn get_authentication(id: u64) -> Option<Box<Authentication>> {
-    CONTEXTS.lock().unwrap().remove(&id)
+    get_contexts().lock().remove(&id)
 }

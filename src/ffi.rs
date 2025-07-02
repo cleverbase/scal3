@@ -1,4 +1,7 @@
 use crate::dispatch::dispatch;
+use core::slice;
+use core::mem;
+use alloc::vec::Vec;
 
 /// Dispatches a CBOR-encoded request and outputs a CBOR-encoded response, which must be freed using [free].
 #[export_name = "scal3_process"]
@@ -8,11 +11,11 @@ pub unsafe extern "C" fn process(
     output_ptr: *mut *mut u8,
     output_len: *mut usize,
 ) {
-    let input = std::slice::from_raw_parts(input_ptr, input_len);
+    let input = slice::from_raw_parts(input_ptr, input_len);
     let vec = dispatch(input);
     let len = vec.len();
     let ptr = vec.as_ptr();
-    std::mem::forget(vec);
+    mem::forget(vec);
     *output_ptr = ptr as *mut u8;
     *output_len = len;
 }

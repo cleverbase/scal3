@@ -23,8 +23,8 @@ use p256::{ecdsa, FieldBytes, ProjectivePoint, PublicKey};
 use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
 use signature::{Signer, Verifier as SignatureVerifier};
-use std::collections::BTreeMap;
-use std::io::Write;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 pub(crate) struct Verifier {
     blinded_subscriber_share: p256::Scalar,
@@ -46,18 +46,41 @@ pub(crate) struct Pass {
 impl Pass {
     pub(crate) fn to_bytes(&self) -> [u8; 308] {
         let mut encoded = [0u8; 308];
-        let mut buf = &mut encoded[..];
-        buf.write_all(&challenge_to_bytes(self.subscriber_commitments))
-            .unwrap(); // 66
-        buf.write_all(&self.authenticator_proof.sig_device.to_bytes())
-            .unwrap(); // 64
-        buf.write_all(self.binding.pk.to_encoded_point(true).as_bytes())
-            .unwrap(); // 33
-        buf.write_all(&self.binding.signature.to_bytes()).unwrap(); // 64
-        buf.write_all(&pk_sender_to_bytes(&self.pk_kem_sender))
-            .unwrap(); // 33
-        buf.write_all(&self.sealed_signature_share).unwrap(); // 32
-        buf.write_all(&self.tag.to_bytes()).unwrap(); // 16
+        let mut offset = 0;
+        
+        // 66 bytes
+        let challenge_bytes = challenge_to_bytes(self.subscriber_commitments);
+        encoded[offset..offset + 66].copy_from_slice(&challenge_bytes);
+        offset += 66;
+        
+        // 64 bytes
+        let sig_device_bytes = self.authenticator_proof.sig_device.to_bytes();
+        encoded[offset..offset + 64].copy_from_slice(&sig_device_bytes);
+        offset += 64;
+        
+        // 33 bytes
+        let pk_bytes = self.binding.pk.to_encoded_point(true);
+        encoded[offset..offset + 33].copy_from_slice(pk_bytes.as_bytes());
+        offset += 33;
+        
+        // 64 bytes
+        let signature_bytes = self.binding.signature.to_bytes();
+        encoded[offset..offset + 64].copy_from_slice(&signature_bytes);
+        offset += 64;
+        
+        // 33 bytes
+        let pk_sender_bytes = pk_sender_to_bytes(&self.pk_kem_sender);
+        encoded[offset..offset + 33].copy_from_slice(&pk_sender_bytes);
+        offset += 33;
+        
+        // 32 bytes
+        encoded[offset..offset + 32].copy_from_slice(&self.sealed_signature_share);
+        offset += 32;
+        
+        // 16 bytes
+        let tag_bytes = self.tag.to_bytes();
+        encoded[offset..offset + 16].copy_from_slice(&tag_bytes);
+        
         encoded
     }
 
@@ -151,11 +174,22 @@ impl ClientExtensionTranscript {
 impl ClientExtensionTranscript {
     pub(crate) fn to_bytes(&self) -> [u8; 129] {
         let mut encoded = [0u8; 129];
-        let mut buf = &mut encoded[..];
-        buf.write_all(&self.pk_binding.to_encoded_point(true).as_bytes())
-            .unwrap();
-        buf.write_all(&self.sig_binding.to_bytes()).unwrap();
-        buf.write_all(&self.sig_joint_second.to_bytes()).unwrap();
+        let mut offset = 0;
+        
+        // 33 bytes
+        let pk_binding_bytes = self.pk_binding.to_encoded_point(true);
+        encoded[offset..offset + 33].copy_from_slice(pk_binding_bytes.as_bytes());
+        offset += 33;
+        
+        // 64 bytes
+        let sig_binding_bytes = self.sig_binding.to_bytes();
+        encoded[offset..offset + 64].copy_from_slice(&sig_binding_bytes);
+        offset += 64;
+        
+        // 32 bytes
+        let sig_joint_second_bytes = self.sig_joint_second.to_bytes();
+        encoded[offset..offset + 32].copy_from_slice(&sig_joint_second_bytes);
+        
         encoded
     }
 }
@@ -187,7 +221,7 @@ pub(crate) struct Provider {
 #[derive(Debug, PartialEq)]
 pub(crate) struct VerificationError;
 
-pub(crate) type Result = std::result::Result<(), VerificationError>;
+pub(crate) type Result = core::result::Result<(), VerificationError>;
 
 fn aad(masked_subscriber_share: &p256::Scalar, pk_joint: &frost::VerifyingKey) -> Vec<u8> {
     [
@@ -665,7 +699,7 @@ mod test {
         let mut rng_hpke = rand_chacha::ChaCha20Rng::from_seed(seed);
         let (sk_r, pk_r) = DhP256HkdfSha256::gen_keypair(&mut rng_hpke);
         let verifier = Verifier::new(&pk_r, &mask, &mut rng_hpke);
-        println!("size of share: {:?}", verifier.sealed_provider_share.len());
+        // Removed println! for no_std compatibility
         let shared_secret = dh(&sk_r, &verifier.pk_kem_subscriber);
         let s = verifier.verify(shared_secret, &pk_r);
         assert!(s.is_some());
