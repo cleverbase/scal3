@@ -26,7 +26,7 @@ jobs:
         include:
           - os: ubuntu-latest
             suffix: linux-x86_64
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             ext: so
           - os: macos-14
             suffix: macos-arm64
