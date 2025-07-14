@@ -189,7 +189,9 @@ This report presents the following solution to the security problem. It applies 
 \item $\mathsf{Aggregate}(\mathsf{msg},C,Z)$: deterministically outputs a “FROSTy” Schnorr signature on message $\mathsf{msg}$ using a commitment list $C$ and a signature share list $Z$, which is a tuple of tuples $(i,z_i)$ with participant index $i$ and signature share $z_i\in\mathbb F^*_q$.
 \end{itemize}
 
-After initial setup, the solution consists of two protocol steps between client and server, after which any verifier can check the authentication. The protocol steps are illustrated in Figure \ref{fig:protocol} and specified along with the setup and check algorithms in Figure \ref{fig:algos}. In this solution, the credential consists of the public keys $\mathsf{cred}=(D_\mathsf P,D_\mathsf A)$ and the transcript of $\mathsf{tr}=(D_\mathsf{B},\mathsf{dgst},\sigma_\mathsf P,\sigma_\mathsf B,\sigma_\mathsf A)$. A prototype is available at \cite{SCAL3}.
+During enrolment, the client generates $d_\mathsf{P}$ and securely shares $D_\mathsf{P}$. The client and server need to set up the authentication protocol and generate the key shares $d_\mathsf{A}$ and $d_\mathsf{S}$ for FROST signing. Key generation is out of scope for this report, but needs to be performed in such a way that the participant’s public key shares remain confidential between the client and server. This is to maintain the Transparency objective: if the public key shares would be accessible to an adversary, the adversary could for example use this to verify offline whether an attempt at guessing the knowledge factor $d_\mathsf{A}$ is successful.
+
+After initial setup, the solution consists of two protocol steps between client and server, after which any verifier can check the authentication. In the message from the client to the server, confidentiality of the $z_2$ signature share must be protected, for example by encrypting it to a public key that is known to belong to the server. The protocol steps are illustrated in Figure \ref{fig:protocol} and specified along with the setup and check algorithms in Figure \ref{fig:algos}. In this solution, the credential consists of the public keys $\mathsf{cred}=(D_\mathsf P,D_\mathsf A)$ and the transcript of $\mathsf{tr}=(D_\mathsf{B},\mathsf{dgst},\sigma_\mathsf P,\sigma_\mathsf B,\sigma_\mathsf A)$. A prototype is available at \cite{SCAL3} and a demo at \cite{demo}.
 
 \begin{figure}[t]
 \protocol[colspace=-4cm]{
@@ -287,7 +289,7 @@ The solution meets the Transparent objective.
 \end{proposition}
 
 \begin{proof}
-Even with access to $D_\mathsf A$ and the method to derive a candidate $d_\mathsf A'$, for example using the smartphone’s message authentication or key agreement key, an adversary would need information about $d_\mathsf S$ to verify if they have found the discrete logarithm $d_\mathsf A+d_\mathsf S$ of $D_\mathsf A$. But the server only returns zero-knowledge proofs, so it is unlikely that a single guess provides sufficient information to inform a second guess. In practice, the rate-limiting also limits the amount of PIN attempts, therefore minimising the risk.
+Even with access to $D_\mathsf A$ and the method to derive a candidate $d_\mathsf A'$, for example using the smartphone’s message authentication or key agreement key, an adversary would need information about $d_\mathsf S$ or to verify if they have found the discrete logarithm $d_\mathsf A+d_\mathsf S$ of $D_\mathsf A$. But the server only returns zero-knowledge proofs, so it is unlikely that a single guess provides sufficient information to inform a second guess. In practice, the rate-limiting also limits the amount of PIN attempts, therefore minimising the risk. Note that since $z_2$ is kept confidential, the adversary cannot use it to derive the client public key share either, so there is no method to verify if they have found its discrete logarithm $d_\mathsf A$.
 \end{proof}
 
 \section{Example applications}
@@ -296,7 +298,7 @@ The remotely protected smartphone authenticator can be applied in systems where 
 
 An alternative application is distributed: the verification data is verified as evidence by a third device. For example, the authentication server may be part of a high-assurance authorization server such as in OAuth \cite{rfc6749}, recording the evidence for auditing. Either the associated resource servers could perform such auditing automatically, or it can be performed in a separate process by a separate entity.
 
-In another application, the verification data is recorded in transparency logs, such as in Certificate Transparency \cite{rfc9162}. This enables users to monitor whether all verification data are recorded, and claim damage when finding evidence of a privileged operation without finding recorded verification data that authorizes that operation. Instead of a public record, the log may be protected or only be shared in the case of actual disputes. This principle is further elaborated in \cite{Verheul2024}.
+In another application, the verification data is recorded in transparency logs, such as in Certificate Transparency \cite{rfc9162}. This enables users to monitor whether all verification data are recorded, and claim damage when finding evidence of a privileged operation without finding recorded verification data authorizing that operation. Instead of a public record, the log may be protected or only be shared in the case of actual disputes. This principle is further elaborated in \cite{Verheul2024}.
 
 \section{Conclusion}
 
