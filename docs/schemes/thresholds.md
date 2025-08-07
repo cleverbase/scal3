@@ -12,12 +12,12 @@ For a prototype with more in-depth documentation, see the [scal3 crate docs](htt
 
 ## How it works
 
-Upon enrolment, the central system provider issues a certificate with two authentication factors:
+Upon enrolment, the central system provider registers data related to two authentication factors:
 
 - 🔑 Something you have: an ECDSA key bound to a device.
 - 💭 Something you know or are: a PIN code or biometry-protected data.
 
-The second factor is protected using [Shamir’s secret sharing](https://dl.acm.org/doi/10.1145/359168.359176) technique. The certificate enables verification by protecting:
+The second factor is protected using [Shamir’s secret sharing](https://dl.acm.org/doi/10.1145/359168.359176) technique. The data enables verification by protecting:
 
 - 🫱 A secret share encrypted using the second authentication factor.
 - 🫲 A secret share encrypted with a user-specific key only known to the provider.
@@ -29,38 +29,63 @@ Subscribers generate instructions and providers prove them using an innovative m
 - Digital signatures proving possession of the enrolled device
 - Digital signatures binding the two authentication factors
 
-Using the certificate, anyone can verify a proof of multi-factor authentication using open standards from the [SOG-IS Agreed Cryptographic Mechanisms v1.3](https://www.sogis.eu/uk/supporting_doc_en.html).
+Using the registered data, anyone can verify a proof of multi-factor authentication using open standards from the [SOG-IS Agreed Cryptographic Mechanisms v1.3](https://www.sogis.eu/uk/supporting_doc_en.html).
 
 ## Technical details
 
-### Tamper-evident log record format
-
-Each tamper-evident log record is based on an ephemeral ECDSA key pair `(binding_sk, binding_vk)` generated on the user’s device. It contains an ECSDSA signature proving the second authentication factor using [FROST](https://eprint.iacr.org/2020/852) two-round threshold signing.
-
 ```
-<message> || <user_sig> || <checksum> || <device_sig> || <binding_sig>
+Entity authentication protocol:
+    (a) Claimant: activate
+    (b) Claimant -> Verifier: credential
+    (c) Verifier: verify
+
+Used by eID providers to limit operations:
+    issuing ID tokens    (trusted server)
+    using document keys  (wallet)
+
+Cryptographic key pairs (P-256):
+    (skD,pkD) device 
+    (skA,pkA) split-knowledge second factor
+    (skE,pkE) ephemeral, per transaction
+
+Transaction input (msg = ts || idV || ctx):
+    ts:       timestamp
+    idV:      verifier identifier
+    ctx:      application context
+
+One-time credential (b) for authentication:
+    (RA,SA):  EC-Schnorr(skA, pkE || msg)
+    sumA:     SHA-256(...) verifier-opaque
+    (RD,SD):  ECDSA(skD, RA || sumA)
+    (RE,SE):  ECDSA(skE, (RD,SD))
+
+Client-server system for activation (a):
+    # RFC 9591 FROST threshold signing
+    Client is trusted to deal 2 skA shares.
+    Client discards pkA and all pkA shares.
+    Client bundles its FROST signing data.
+    Client hashes its SA share into sumA.
+    Client deletes skE directly after use.
+    Server throttles bundles signed by skD.
+    Server returns aggregated SA if valid.
+
+    # RFC 9180 Hybrid Public Key Encryption
+    Server protects a static ECDH key skS.
+    Client encrypts the skA server share.
+    Client encrypts its SA signature share.
+
+    # RFC 9380 hash_to_field, hash_to_curve
+    Client defines local PRF(x), e.g.:
+        pk = hash_to_curve(x)       # P-256
+        ss = ECDH(sk_hw_backed, pk) # P-256
+        return hash_to_field(ss)
+            # to prime-order field of P-256
+    Client encrypts its skA share at rest:
+        q = prime order of P-256
+        share_enc = share + PRF(PIN) mod q
+
+Verification algorithm (c):
+    1. Validate registration of claimed ID.
+    2. Retrieve registered pkD and pkA.
+    3. Verify signatures sD, sA, sE.
 ```
-
-- `message`: `<binding_vk> || <log metadata> || <instruction>`
-- `user_sig`: `ecsdsa(<message>)` represented as `c || z`
-- `checksum`: `sha256(<user signature share>)`
-- `device_sig`: `ecdsa(<c> || <checksum>)` created with `device_sk`
-- `binding_sig`: `ecdsa(<device_sig>)` created with `binding_sk`
-
-### Authentication protocol
-
-1. Provider commits in FROST.
-2. Provider shares its commitments with Subscriber in a challenge.
-3. Subscriber commits in FROST, completing the first FROST round.
-4. Subscriber generates `(binding_sk, binding_vk)`.
-5. Subscriber forms the `message` to sign.
-6. Subscriber signs in FROST to create `c` and `user signature share`.
-7. Subscriber computes the hash digest `checksum`.
-7. Subscriber creates the device signature `device_sig`.
-8. Subscriber creates the binding signature `binding_sig`.
-9. Subscriber destroys `binding_sk`.
-10. Subscriber responds to Provider with the results.
-11. Provider validates the input and verifies the signatures.
-12. Provider signs in FROST, completing the second FROST round.
-13. Provider aggregates the `user_sig` in FROST.
-14. Provider writes the record to the tamper-evident log.
