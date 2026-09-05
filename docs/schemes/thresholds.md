@@ -6,7 +6,7 @@
 This document introduces the SCAL3 with Thresholds scheme, a scheme to meet the [SCAL3 requirements](../../README.md) based on threshold signing between the subscriber and the provider. With this solution, users verify evidence using open standard ECDSA and ECSDSA signature verification.
 
 > [!NOTE]
-> Patent NL2037022 pending. For inquiries, [contact Cleverbase](mailto:sander.dijkhuis@cleverbase.com).
+> This scheme is covered by granted patent NL2037022B1, and by further applications pending. For questions about scope or licensing, [contact Cleverbase](https://cleverbase.com/en/products/wsca/#:~:text=Discuss%20your%20wallet%20with%20us).
 
 For a prototype with more in-depth documentation, see the [scal3 crate docs](https://docs.rs/scal3/latest/scal3/). For a technical report, see [Authentication and sole control at a high level of assurance on widespread smartphones with threshold signatures](../report/README.md).
 

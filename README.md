@@ -1,6 +1,6 @@
 <h1 align="center"><img src="docs/media/scal3.png" alt="SCAL3" width="600"><br><br>Verify that systems operate under your sole control</h1>
 
-**You need identity wallets and trust services to [participate securely in online society](https://repository.tudelft.nl/islandora/object/uuid%3A4c2005ea-9cfd-420f-80fb-e8714be0bdd5). Whether you are booking a holiday, signing a contract, or providing financial services. Underlying central systems mitigate risks of identity theft, fraud, and data loss. But you need assurance that these systems process user data only under their sole control. With SCAL3, [Vidua](https://vidua.nl/english/) empowers its users with this assurance made available on scale.**
+**You need identity wallets and trust services to [participate securely in online society](https://repository.tudelft.nl/islandora/object/uuid%3A4c2005ea-9cfd-420f-80fb-e8714be0bdd5). Whether you are booking a holiday, signing a contract, or providing financial services. Underlying central systems mitigate risks of identity theft, fraud, and data loss. But you need assurance that these systems process user data only under their sole control. With SCAL3, [Cleverbase](https://cleverbase.com/en/) empowers its users with this assurance made available on scale.**
 
 Depending on the risks, wallet and trust service providers leverage central systems with a [sole control assurance level](https://www.enisa.europa.eu/publications/assessment-of-standards-related-to-eidas) (SCAL):
 
@@ -51,6 +51,6 @@ This empowers users with cryptographic proof.
 
 1. Using the [SCAL3 with CTAP2](docs/schemes/ctap2.md) scheme. This involves using a dedicated multi-factor cryptographic device, such as a FIDO security key supporting CTAP2 with PIN protection.
 2. Using the [SECDSA](https://eprint.iacr.org/2021/910) [technology](https://www.cs.ru.nl/E.Verheul/presentations/SECDSA%20Assissted%20Wallet%200.31.pdf). This technology is based on algorithms that were invented in 2021 and patented by Eric Verheul. Users verify evidence by applying homomorphic encryption.
-3. Using the [SCAL3 with Thresholds](docs/schemes/thresholds.md) scheme. With this patent pending solution, users verify evidence using open standard ECDSA and ECSDSA signature verification.
+3. Using the [SCAL3 with Thresholds](docs/schemes/thresholds.md) scheme. With this patented solution, users verify evidence using open standard ECDSA and ECSDSA (Schnorr) signature verification.
 
-In 2023, [Cleverbase](https://cleverbase.com/en/) experimented with all three solutions. In 2024, the [Vidua](https://vidua.nl/english/) identity wallet is rolling out solution 3 to its users. By enabling verification using open standards, this method makes it easy for users to verify the tamper-evident logs.
+In 2023, [Cleverbase](https://cleverbase.com/en/) experimented with all three solutions. In 2024, solution 3 (SCAL3 with Thresholds) was chosen to roll out to its [identity wallet](https://cleverbase.com/en/products/cleverbase-wallet/) users. In 2026, it became available to other wallet providers in the [WSCA](https://cleverbase.com/en/products/wsca/). By enabling verification using open standards, this method makes it easy for users to verify the tamper-evident logs.
